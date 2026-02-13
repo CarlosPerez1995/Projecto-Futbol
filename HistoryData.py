@@ -34,7 +34,6 @@ path = r"C:\Users\USUARIO\Desktop\Futbol_xlsx"
 # temporadas.to_excel(f"{path}\Temporadas.xlsx", index= True)
 # Posiciones.to_excel(f"{path}\Posiciones.xlsx", index= True)
 Calendario.to_excel(f"{path}\Calendario.xlsx", index= True)
-
 quit()
 
 
