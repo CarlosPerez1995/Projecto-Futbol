@@ -37,6 +37,18 @@ Estado actual: **etapa inicial (solo extracción de datos)**.
    una sola instancia — cada instanciación puede implicar llamadas a la API.
 10. Todo script que escriba archivos debe crear las carpetas de salida si no
     existen (`Path(...).mkdir(parents=True, exist_ok=True)`).
+11. Al finalizar cualquier tarea que modifique archivos del repo, SIEMPRE hacer
+    `git add`, commit descriptivo, y `git push origin desarrollo`. Nunca dejar
+    cambios solo en local. Nunca pushear directo a main.
+
+## Estrategia de ramas
+- Rama estable/release: `main`
+- Rama de desarrollo activo: `desarrollo`
+- Convención de nombres para ramas futuras: `feature/<nombre>`,
+  `fix/<nombre>`, `release/<version>`
+- Nota: las ramas CAPG, Helmuth-A y NicoMartinico mencionadas en la planeación
+  original ya no existen en el remoto (se mergearon a main el 2026-02-12 vía
+  PR #1 de NicoMartinico). No hay ramas obsoletas pendientes de limpiar.
 
 ## Flujo de extracción de datos
 1. Instanciar `soccerdata.Sofascore()` una sola vez por sesión/liga.
