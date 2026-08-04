@@ -4,16 +4,33 @@ Script principal de extracción (en refactor). Una sola instancia de
 ``Sofascore`` se reutiliza para todas las llamadas, tal como exige la
 regla 9 de AGENTS.md.
 
-El guardado en ``data/raw/`` se implementation en la Tarea 5; por ahora
-este script solo extrae y muestra info de los DataFrames.
+Los DataFrames extraídos se guardan como CSV en ``data/raw/`` con un
+timestamp en el nombre de archivo. Por configuración de ``.gitignore``,
+la carpeta ``data/`` no se versiona (son datos generados).
 """
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import soccerdata as scdat
+
+
+def _save_csv(df: pd.DataFrame, data_dir: Path, nombre: str, ts: str) -> Path:
+    """Guarda ``df`` como CSV en ``data_dir`` con nombre ``<nombre>_<ts>.csv``.
+
+    Crea ``data_dir`` si no existe (regla 10 de AGENTS.md). Conserva el
+    índice (necesario para DataFrames con MultiIndex de soccerdata).
+
+    Returns:
+        Ruta del archivo CSV escrito.
+    """
+    data_dir.mkdir(parents=True, exist_ok=True)
+    archivo = data_dir / f"{nombre}_{ts}.csv"
+    df.to_csv(archivo, index=True)
+    return archivo
 
 
 def get_leagues(sofascore: scdat.Sofascore) -> pd.DataFrame:
@@ -47,11 +64,20 @@ def get_schedule(sofascore: scdat.Sofascore) -> pd.DataFrame:
 def main(liga: str, temporadas: list[str], data_dir: Path | None = None) -> None:
     """Punto de entrada: instancia Sofascore una vez y reutilízalo.
 
+    Extrae ligas, temporadas, posiciones y calendario; guarda cada
+    DataFrame como CSV en ``data_dir`` (por defecto ``data/raw/``) con
+    un timestamp en el nombre. Al final verifica que la cantidad de
+    archivos generados coincida con la cantidad de DataFrames esperados.
+
     Args:
         liga: código de liga aceptado por soccerdata (p.e. "ENG-Premier League").
         temporadas: listado de códigos de temporada (p.e. ["2425", "2526"]).
-        data_dir: carpeta de salida (reservada para la Tarea 5, sin uso por ahora).
+        data_dir: carpeta de salida para los CSV (default: data/raw/).
     """
+    if data_dir is None:
+        data_dir = Path("data/raw")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # Una sola instancia para toda la sesión (regla 9 de AGENTS.md).
     sofascore = scdat.Sofascore(leagues=liga, seasons=temporadas)
 
@@ -71,12 +97,27 @@ def main(liga: str, temporadas: list[str], data_dir: Path | None = None) -> None
     calendario = get_schedule(sofascore)
     calendario.info()
 
-    # El guardado en data/raw/ se implementa en la Tarea 5.
-    if data_dir is not None:
-        print(
-            f"\n(data_dir={data_dir} reservado para la Tarea 5: guardado en "
-            f"data/raw/ aún no implementado)"
-        )
+    # Guardado en data/raw/ como CSV con timestamp (Tarea 5).
+    dataframes = [
+        ("leagues", ligas),
+        ("seasons", temporadas_df),
+        ("standings", posiciones),
+        ("schedule", calendario),
+    ]
+    for nombre, df in dataframes:
+        ruta = _save_csv(df, data_dir, nombre, ts)
+        print(f"Guardado: {ruta}")
+
+    # Verificación: tantos archivos CSV como DataFrames esperados.
+    archivos_csv = sorted(data_dir.glob(f"*_{ts}.csv"))
+    assert len(archivos_csv) == len(dataframes), (
+        f"Se esperaban {len(dataframes)} CSV en {data_dir} con ts {ts}, "
+        f"pero hay {len(archivos_csv)}."
+    )
+    print(
+        f"\nOK: {len(archivos_csv)} archivos CSV generados en {data_dir} "
+        f"(esperados: {len(dataframes)})."
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,8 +140,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=None,
-        help="Carpeta de salida (reservada Tarea 5).",
+        default=Path("data/raw"),
+        help="Carpeta de salida para los CSV (default: data/raw/).",
     )
     return parser.parse_args()
 
