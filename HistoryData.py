@@ -7,15 +7,105 @@ regla 9 de AGENTS.md.
 Los DataFrames extraídos se guardan como CSV en ``data/raw/`` con un
 timestamp en el nombre de archivo. Por configuración de ``.gitignore``,
 la carpeta ``data/`` no se versiona (son datos generados).
+
+Normalizaciones aplicadas a cada DataFrame:
+- Nombres de columnas y de niveles del índice en snake_case (sin
+  mayúsculas, sin espacios).
+- Columnas de fecha/datetime timezone-aware quedan timezone-naive
+  (regla de AGENTS.md: ``tz_localize(None)``).
+- Validaciones al final: dtypes esperados, sin columnas con espacios
+  ni mayúsculas.
 """
 from __future__ import annotations
 
 import argparse
+import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import soccerdata as scdat
+
+logger = logging.getLogger(__name__)
+
+
+def _to_snake_case(name: str) -> str:
+    """Normaliza un nombre a snake_case.
+
+    Reemplaza espacios y guiones por guion bajo, colapsa guiones bajos
+    duplicados y pone todo en minúsculas. Ej: ``"Home Team"`` ->
+    ``"home_team"``, ``"MP"`` -> ``"mp"``.
+    """
+    s = re.sub(r"[\s\-]+", "_", str(name)).strip("_")
+    s = re.sub(r"__+", "_", s)
+    return s.lower()
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Renombra columnas y niveles del índice a snake_case (inplace-safe)."""
+    df = df.rename(columns=lambda c: _to_snake_case(c))
+    # Renombrar niveles del índice (puede haber None en algunos niveles).
+    nuevos_nombres = [
+        (_to_snake_case(n) if n is not None else n) for n in df.index.names
+    ]
+    df.index.names = nuevos_nombres
+    return df
+
+
+def _coerce_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Para cada columna datetime tz-aware, la deja timezone-naive.
+
+    Solo actúa sobre columnas cuyo dtype sea datetime y tenga tz.
+    Regla de AGENTS.md: ``pd.to_datetime(..., errors='coerce').dt.tz_localize(None)``.
+    No inventa columnas: si un DataFrame no tiene fechas, no hace nada.
+    """
+    for col in df.columns:
+        # datetime64[ns, tz] o datetime64[us, tz] -> kind incluye "datetime64"
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            # Si ya es timezone-naive, tz_localize(None) lanzaría error;
+            # por eso solo aplicamos si tiene tz.
+            try:
+                if df[col].dt.tz is not None:
+                    df[col] = pd.to_datetime(
+                        df[col], errors="coerce"
+                    ).dt.tz_localize(None)
+            except (TypeError, AttributeError):
+                # Columna datetime sin tz (naive) -> dejarla tal cual.
+                pass
+    return df
+
+
+def _log_dtypes(nombre: str, df: pd.DataFrame) -> None:
+    """Log informativo de dtypes por DataFrame (para verificación)."""
+    logger.info("dtypes %s:\n%s", nombre, df.dtypes.to_string())
+
+
+def _validate(nombre: str, df: pd.DataFrame) -> None:
+    """Valida naming: columnas en snake_case, sin mayúsculas, sin espacios.
+
+    Raises:
+        AssertionError: si alguna columna o nivel de índice tiene
+            mayúsculas, espacios o no está en snake_case.
+    """
+    malas_cols = [
+        c for c in df.columns
+        if c != _to_snake_case(c) or " " in str(c) or str(c) != str(c).lower()
+    ]
+    assert not malas_cols, (
+        f"[{nombre}] columnas fuera de snake_case / con mayúsculas "
+        f"/ con espacios: {malas_cols}"
+    )
+    malos_idx = [
+        n for n in df.index.names
+        if n is not None and (
+            n != _to_snake_case(n) or " " in n or n != n.lower()
+        )
+    ]
+    assert not malos_idx, (
+        f"[{nombre}] niveles de índice fuera de snake_case: {malos_idx}"
+    )
+    logger.info("[%s] OK: columnas e índice en snake_case", nombre)
 
 
 def _save_csv(df: pd.DataFrame, data_dir: Path, nombre: str, ts: str) -> Path:
@@ -34,31 +124,47 @@ def _save_csv(df: pd.DataFrame, data_dir: Path, nombre: str, ts: str) -> Path:
 
 
 def get_leagues(sofascore: scdat.Sofascore) -> pd.DataFrame:
-    """Extrae el catálogo de ligas disponibles."""
-    return sofascore.read_leagues()
+    """Extrae el catálogo de ligas disponibles.
+
+    Normaliza columnas a snake_case y fechas a timezone-naive (no hay
+    columnas de fecha en este DataFrame, pero el helper es idempotente).
+    """
+    df = sofascore.read_leagues()
+    df = _normalize_columns(df)
+    df = _coerce_datetime_columns(df)
+    return df
 
 
 def get_seasons(sofascore: scdat.Sofascore) -> pd.DataFrame:
     """Extrae las temporadas disponibles para la liga configurada."""
-    return sofascore.read_seasons()
+    df = sofascore.read_seasons()
+    df = _normalize_columns(df)
+    df = _coerce_datetime_columns(df)
+    return df
 
 
 def get_standings(sofascore: scdat.Sofascore) -> pd.DataFrame:
-    """Extrae la tabla de posiciones de la liga/temporada configurada."""
-    return sofascore.read_league_table()
+    """Extrae la tabla de posiciones de la liga/temporada configurada.
+
+    Renombra columnas a snake_case: MP -> mp, W -> w, D -> d, L -> l,
+    GF -> gf, GA -> ga, GD -> gd, Pts -> pts.
+    """
+    df = sofascore.read_league_table()
+    df = _normalize_columns(df)
+    df = _coerce_datetime_columns(df)
+    return df
 
 
 def get_schedule(sofascore: scdat.Sofascore) -> pd.DataFrame:
     """Extrae el calendario de partidos de la liga/temporada configurada.
 
-    La columna ``date`` se normaliza a timezone-naive según la nota de
-    AGENTS.md (tz_localize(None)).
+    La columna ``date`` (datetime64 tz-aware) se normaliza a
+    timezone-naive según la nota de AGENTS.md (tz_localize(None)).
     """
-    calendario = sofascore.read_schedule()
-    calendario["date"] = pd.to_datetime(
-        calendario["date"], errors="coerce"
-    ).dt.tz_localize(None)
-    return calendario
+    df = sofascore.read_schedule()
+    df = _normalize_columns(df)
+    df = _coerce_datetime_columns(df)
+    return df
 
 
 def main(liga: str, temporadas: list[str], data_dir: Path | None = None) -> None:
@@ -97,13 +203,25 @@ def main(liga: str, temporadas: list[str], data_dir: Path | None = None) -> None
     calendario = get_schedule(sofascore)
     calendario.info()
 
-    # Guardado en data/raw/ como CSV con timestamp (Tarea 5).
+    # Lista única de (nombre, df) para validación + guardado.
     dataframes = [
         ("leagues", ligas),
         ("seasons", temporadas_df),
         ("standings", posiciones),
         ("schedule", calendario),
     ]
+
+    # Validación de naming (snake_case, sin mayúsculas, sin espacios)
+    # y log de dtypes esperados por DataFrame.
+    for nombre, df in dataframes:
+        _log_dtypes(nombre, df)
+        _validate(nombre, df)
+    print(
+        "\nOK: validaciones de naming (snake_case) y dtypes pasaron para "
+        f"{len(dataframes)} DataFrames."
+    )
+
+    # Guardado en data/raw/ como CSV con timestamp (Tarea 5).
     for nombre, df in dataframes:
         ruta = _save_csv(df, data_dir, nombre, ts)
         print(f"Guardado: {ruta}")
@@ -147,5 +265,9 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     args = parse_args()
     main(liga=args.liga, temporadas=args.temporadas, data_dir=args.data_dir)
