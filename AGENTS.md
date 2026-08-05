@@ -51,11 +51,27 @@ Estado actual: **etapa inicial (solo extracción de datos)**.
   PR #1 de NicoMartinico). No hay ramas obsoletas pendientes de limpiar.
 
 ## Flujo de extracción de datos
-1. Instanciar `soccerdata.Sofascore()` una sola vez por sesión/liga.
-2. Extraer ligas con `read_leagues()`
-3. Extraer temporadas con `read_seasons()`
-4. Extraer tablas de posiciones con `read_league_table()`
-5. Extraer calendarios de partidos con `read_schedule()`
+1. Instanciar `soccerdata.Sofascore(leagues=[...], seasons=[...])` una sola
+   vez por corrida, con la lista completa de ligas/temporadas (soccerdata
+   hace el producto cruzado internamente) — nunca una instancia por liga.
+2. Antes de extraer, filtrar las ligas solicitadas contra
+   `Sofascore.available_leagues()` (no asumir que las 8 ligas de
+   `LEAGUE_DICT` están soportadas por esta fuente en particular).
+3. Extraer ligas con `read_leagues()`, temporadas con `read_seasons()`,
+   tabla de posiciones con `read_league_table()` y calendario con
+   `read_schedule()`. Cada extracción va en su propio `try/except`: un
+   fallo puntual se loguea y no aborta las demás.
+4. Antes de guardar, comparar cada DataFrame contra el último CSV bueno
+   conocido del mismo dataset (misma carpeta) para detectar roturas
+   silenciosas (0 filas, columnas faltantes, caída drástica de filas).
+5. Guardar en `data/raw/<fuente>/` (p.e. `data/raw/sofascore/`) con
+   nombre `<dataset>_<timestamp>.csv` — subcarpeta por fuente para que
+   `data/raw/` quede ordenado a medida que se sumen más lectores
+   (`MatchHistory`, `ESPN`, ...).
+
+Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Robustez/`
+(`00_Resumen_Ejecutivo.md`, `01_Investigacion_Fuentes_de_Datos.md`,
+`02_Plan_de_Robustez_Fase1_Extraccion.md`), fuera de este repo.
 
 ## Notas importantes
 - Fuente de datos: Sofascore
@@ -65,8 +81,9 @@ Estado actual: **etapa inicial (solo extracción de datos)**.
 - Integración con base de datos: planeada, no implementada aún
 
 ## Estructura del proyecto
-- `HistoryData.py` — script principal de extracción de datos (en refactor)
-- `data/` — carpeta de salida para archivos Excel/CSV generados
+- `HistoryData.py` — script principal de extracción de datos (multi-liga,
+  con aislamiento de fallos y detección de rotura silenciosa)
+- `data/raw/<fuente>/` — CSVs generados por fuente (p.e. `data/raw/sofascore/`)
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
 - Scripts de procesamiento de datos — por crear
@@ -75,5 +92,7 @@ Estado actual: **etapa inicial (solo extracción de datos)**.
 ## Comandos útiles
 - Activar entorno: `source .venv/bin/activate`
 - Instalar dependencias: `pip install -r requirements.txt`
-- Ejecutar script principal: `python3 HistoryData.py`
+- Ejecutar script principal (5 grandes ligas por defecto):
+  `python3 HistoryData.py`
+- Extraer ligas específicas: `python3 HistoryData.py --ligas "ENG-Premier League" "ESP-La Liga"`
 - Congelar dependencias tras instalar: `pip freeze > requirements.txt`
