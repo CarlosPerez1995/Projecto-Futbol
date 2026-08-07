@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "futbol"
+version = "0.1.0"
+description = "Extracción, transformación y modelado de datos de fútbol para apuestas."
+requires-python = ">=3.11"
+dependencies = [
+    "soccerdata",
+    "pandas",
+    "openpyxl",
+]
+
+[project.scripts]
+futbol-extract = "futbol.ingestion.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

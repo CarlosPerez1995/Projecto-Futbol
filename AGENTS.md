@@ -81,8 +81,16 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
 - Integración con base de datos: planeada, no implementada aún
 
 ## Estructura del proyecto
-- `HistoryData.py` — script principal de extracción de datos (multi-liga,
-  con aislamiento de fallos y detección de rotura silenciosa)
+- `src/futbol/` — paquete instalable (`pip install -e .`):
+  - `src/futbol/transform/normalize.py` — normalización genérica (snake_case,
+    fechas tz-naive, validaciones, guardado a CSV, detección de rotura
+    silenciosa), sin atar a ninguna fuente en particular.
+  - `src/futbol/ingestion/sofascore.py` — extracción específica de Sofascore
+    (`get_leagues`, `get_seasons`, `get_standings`, `get_schedule`,
+    `_filter_available_leagues`).
+  - `src/futbol/ingestion/cli.py` — CLI delgado (`main()`/`parse_args()`),
+    entry point `futbol-extract`.
+- `pyproject.toml` — empaquetado (`setuptools`) y entry point `futbol-extract`.
 - `data/raw/<fuente>/` — CSVs generados por fuente (p.e. `data/raw/sofascore/`)
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
@@ -92,7 +100,8 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
 ## Comandos útiles
 - Activar entorno: `source .venv/bin/activate`
 - Instalar dependencias: `pip install -r requirements.txt`
-- Ejecutar script principal (5 grandes ligas por defecto):
-  `python3 HistoryData.py`
-- Extraer ligas específicas: `python3 HistoryData.py --ligas "ENG-Premier League" "ESP-La Liga"`
+- Instalar el paquete en modo editable (necesario para el entry point):
+  `pip install -e .`
+- Ejecutar extracción (5 grandes ligas por defecto): `futbol-extract`
+- Extraer ligas específicas: `futbol-extract --ligas "ENG-Premier League" "ESP-La Liga"`
 - Congelar dependencias tras instalar: `pip freeze > requirements.txt`
