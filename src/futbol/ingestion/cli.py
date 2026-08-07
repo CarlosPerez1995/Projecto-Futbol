@@ -32,6 +32,7 @@ from pathlib import Path
 import pandas as pd
 import soccerdata as scdat
 
+from futbol.config import FutbolConfig, load_config
 from futbol.ingestion.sofascore import (
     SOFASCORE_SOURCE,
     _filter_available_leagues,
@@ -48,16 +49,6 @@ from futbol.transform.normalize import (
 )
 
 logger = logging.getLogger(__name__)
-
-# 5 grandes ligas domésticas (validadas contra Sofascore.available_leagues()
-# en tiempo de ejecución por _filter_available_leagues, no asumidas).
-DEFAULT_LIGAS = [
-    "ENG-Premier League",
-    "ESP-La Liga",
-    "ITA-Serie A",
-    "GER-Bundesliga",
-    "FRA-Ligue 1",
-]
 
 
 def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | None = None) -> None:
@@ -153,7 +144,9 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
         print(f"\nAVISO: {len(fallos)} fuente(s) fallaron y se omitieron: {fallos}")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(config: FutbolConfig | None = None) -> argparse.Namespace:
+    if config is None:
+        config = load_config()
     parser = argparse.ArgumentParser(
         description="Extracción de datos de fútbol desde Sofascore."
     )
@@ -161,35 +154,36 @@ def parse_args() -> argparse.Namespace:
         "--ligas",
         type=str,
         nargs="+",
-        default=DEFAULT_LIGAS,
+        default=config.default_ligas,
         help=(
             "Códigos de liga a extraer (p.e. 'ENG-Premier League' 'ESP-La Liga'). "
-            f"Default: las 5 grandes ligas domésticas ({', '.join(DEFAULT_LIGAS)})."
+            f"Default (config/config.yaml): {', '.join(config.default_ligas)}."
         ),
     )
     parser.add_argument(
         "--temporadas",
         type=str,
         nargs="+",
-        default=["2425", "2526"],
+        default=config.default_temporadas,
         help="Códigos de temporada (p.e. 2425 2526).",
     )
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path("data/raw"),
-        help="Carpeta de salida para los CSV (default: data/raw/).",
+        default=config.data_dir,
+        help=f"Carpeta de salida para los CSV (default: {config.data_dir}).",
     )
     return parser.parse_args()
 
 
 def main() -> None:
-    """Entry point de ``futbol-extract``: configura logging, parsea args y ejecuta."""
+    """Entry point de ``futbol-extract``: carga config, configura logging, parsea args y ejecuta."""
+    config = load_config()
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, config.log_level.upper(), logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    args = parse_args()
+    args = parse_args(config)
     run_extraction(ligas=args.ligas, temporadas=args.temporadas, data_dir=args.data_dir)
 
 

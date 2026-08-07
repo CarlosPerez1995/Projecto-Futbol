@@ -1,0 +1,18 @@
+# Configuración por defecto de futbol-extract (tarea 1.5.2 de la Suite de
+# Implementación de Arquitectura). Cambiar estos valores cambia el
+# comportamiento default de la CLI sin tocar ningún .py.
+
+default_ligas:
+  - "ENG-Premier League"
+  - "ESP-La Liga"
+  - "ITA-Serie A"
+  - "GER-Bundesliga"
+  - "FRA-Ligue 1"
+
+default_temporadas:
+  - "2425"
+  - "2526"
+
+data_dir: "data/raw"
+
+log_level: "INFO"
