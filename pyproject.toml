@@ -12,6 +12,7 @@ dependencies = [
     "pandas",
     "openpyxl",
     "PyYAML",
+    "python-dotenv",
 ]
 
 [project.scripts]
