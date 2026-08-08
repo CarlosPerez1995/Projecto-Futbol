@@ -15,4 +15,10 @@ default_temporadas:
 
 data_dir: "data/raw"
 
+# Caché de soccerdata (tarea 1.6.3). soccerdata guarda acá tanto los
+# datos cacheados de sus lecturas (BASE_DIR/data) como su configuración
+# custom (BASE_DIR/config) — ver SOCCERDATA_DIR en futbol/config.py.
+# No se versiona (cubierto por el patrón "data/" de .gitignore).
+cache_dir: "data/cache/soccerdata"
+
 log_level: "INFO"

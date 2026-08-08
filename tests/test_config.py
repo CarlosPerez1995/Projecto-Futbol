@@ -5,11 +5,12 @@ No hacen ninguna llamada de red: solo leen archivos YAML locales
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from futbol.config import FutbolConfig, load_config
+from futbol.config import FutbolConfig, configure_soccerdata_cache, load_config
 
 
 def test_load_config_lee_config_yaml_de_prueba(tmp_path: Path):
@@ -20,6 +21,7 @@ default_ligas:
 default_temporadas:
   - "2425"
 data_dir: "data/raw"
+cache_dir: "data/cache/soccerdata"
 log_level: "DEBUG"
 """
     config_path = tmp_path / "config.yaml"
@@ -31,6 +33,7 @@ log_level: "DEBUG"
     assert config.default_ligas == ["ENG-Premier League", "ESP-La Liga"]
     assert config.default_temporadas == ["2425"]
     assert config.data_dir == Path("data/raw")
+    assert config.cache_dir == Path("data/cache/soccerdata")
     assert config.log_level == "DEBUG"
 
 
@@ -42,6 +45,7 @@ default_temporadas:
   - 2425
   - 2526
 data_dir: "data/raw"
+cache_dir: "data/cache/soccerdata"
 log_level: "INFO"
 """
     config_path = tmp_path / "config.yaml"
@@ -60,8 +64,18 @@ def test_load_config_default_path_usa_config_real_del_repo():
     assert config.default_ligas
     assert config.default_temporadas
     assert isinstance(config.data_dir, Path)
+    assert isinstance(config.cache_dir, Path)
 
 
 def test_load_config_archivo_inexistente_lanza_error(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         load_config(tmp_path / "no_existe.yaml")
+
+
+def test_configure_soccerdata_cache_fija_env_var_absoluta(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("SOCCERDATA_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    configure_soccerdata_cache(Path("data/cache/soccerdata"))
+
+    assert os.environ["SOCCERDATA_DIR"] == str((tmp_path / "data/cache/soccerdata").resolve())

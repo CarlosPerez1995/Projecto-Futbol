@@ -20,6 +20,10 @@ Robustez (tarea 1.6 del plan):
 - Antes de guardar, se compara cada DataFrame contra el último CSV
   bueno conocido del mismo dataset para detectar roturas silenciosas
   (0 filas, columnas faltantes, caída drástica de filas).
+- La caché de ``soccerdata`` (por defecto ``~/soccerdata``, fuera del
+  repo) se redirige a ``cache_dir`` de ``config/config.yaml`` (default
+  ``data/cache/soccerdata``) vía ``SOCCERDATA_DIR``, fijada al importar
+  este módulo, antes de importar ``soccerdata``.
 """
 from __future__ import annotations
 
@@ -29,11 +33,19 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-import soccerdata as scdat
+from futbol.config import FutbolConfig, configure_soccerdata_cache, load_config
 
-from futbol.config import FutbolConfig, load_config
-from futbol.ingestion.sofascore import (
+# Tarea 1.6.3 del plan de robustez: la caché de soccerdata se configura
+# acá, antes de importar `soccerdata` (o `futbol.ingestion.sofascore`,
+# que lo importa) — `soccerdata/_config.py` lee `SOCCERDATA_DIR` como
+# código de nivel de módulo al importarse, así que fijar la variable de
+# entorno después de esos imports no tendría efecto.
+configure_soccerdata_cache(load_config().cache_dir)
+
+import pandas as pd  # noqa: E402
+import soccerdata as scdat  # noqa: E402
+
+from futbol.ingestion.sofascore import (  # noqa: E402
     SOFASCORE_SOURCE,
     _filter_available_leagues,
     get_leagues,
@@ -41,7 +53,7 @@ from futbol.ingestion.sofascore import (
     get_seasons,
     get_standings,
 )
-from futbol.transform.normalize import (
+from futbol.transform.normalize import (  # noqa: E402
     _check_rotura_silenciosa,
     _log_dtypes,
     _save_csv,
