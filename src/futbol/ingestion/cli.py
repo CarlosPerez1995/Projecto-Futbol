@@ -1,13 +1,13 @@
 """CLI de extracción de datos de fútbol (entry point ``futbol-extract``).
 
 Delgado: orquesta las funciones de extracción de
-``futbol.ingestion.sofascore``/``futbol.ingestion.match_history`` y de
-normalización/guardado de ``futbol.transform.normalize``, sin
-reimplementar su lógica.
+``futbol.ingestion.sofascore``/``futbol.ingestion.match_history``/
+``futbol.ingestion.espn`` y de normalización/guardado de
+``futbol.transform.normalize``, sin reimplementar su lógica.
 
 Los DataFrames extraídos se guardan como CSV en ``data/raw/<fuente>/``
 (subcarpeta por fuente: ``data/raw/sofascore/``, ``data/raw/match_history/``,
-y a futuro ``ESPN``) con un timestamp en el nombre de archivo, común a
+``data/raw/espn/``) con un timestamp en el nombre de archivo, común a
 todas las fuentes de la misma corrida. Por configuración de
 ``.gitignore``, la carpeta ``data/`` no se versiona (son datos
 generados).
@@ -37,6 +37,16 @@ en la misma corrida y con el mismo timestamp. Es una instancia separada
 de ``Sofascore`` -- son lectores distintos del paquete ``soccerdata``,
 la regla 9 de AGENTS.md ("una sola instancia por sesión") aplica por
 lector, no exige una única instancia entre lectores.
+
+Fuentes (tarea 1.3 del plan): también se extrae el calendario de ESPN
+(``get_espn_schedule``), instancia separada, misma corrida/timestamp.
+Solo el calendario está integrado acá -- la exploración manual previa
+(ver ``docs/espn_cobertura.md``) confirmó que ``read_matchsheet()`` y
+``read_lineup()`` de ``soccerdata==1.9.1`` están rotos contra la API
+actual de ESPN (``KeyError: 'form'`` en el 100% de una muestra real),
+así que esas dos funciones quedan implementadas en
+``futbol.ingestion.espn`` pero fuera del pipeline productivo hasta que
+se corrija upstream.
 """
 from __future__ import annotations
 
@@ -71,6 +81,10 @@ sync_league_dict()
 import pandas as pd  # noqa: E402
 import soccerdata as scdat  # noqa: E402
 
+from futbol.ingestion.espn import (  # noqa: E402
+    ESPN_SOURCE,
+    get_espn_schedule,
+)
 from futbol.ingestion.match_history import (  # noqa: E402
     MATCH_HISTORY_SOURCE,
     get_match_history,
@@ -94,20 +108,22 @@ logger = logging.getLogger(__name__)
 
 
 def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | None = None) -> None:
-    """Instancia Sofascore y MatchHistory (por separado) y extrae todo en la misma corrida.
+    """Instancia Sofascore, MatchHistory y ESPN (por separado) y extrae todo en la misma corrida.
 
-    Extrae ligas, temporadas, posiciones y calendario de Sofascore, y
+    Extrae ligas, temporadas, posiciones y calendario de Sofascore,
     resultados + cuotas históricas de MatchHistory (football-data.co.uk,
-    tarea 2.1 / 1.2 del plan), para las mismas ``ligas``/``temporadas``
-    solicitadas, en una sola corrida con un timestamp común. Cada
-    DataFrame se guarda como CSV en ``data_dir/<fuente>/`` (por defecto
-    ``data/raw/sofascore/`` y ``data/raw/match_history/``).
+    tarea 2.1 / 1.2 del plan) y calendario de ESPN (tarea 1.3 del plan),
+    para las mismas ``ligas``/``temporadas`` solicitadas, en una sola
+    corrida con un timestamp común. Cada DataFrame se guarda como CSV en
+    ``data_dir/<fuente>/`` (por defecto ``data/raw/sofascore/``,
+    ``data/raw/match_history/`` y ``data/raw/espn/``).
 
-    Robustez (tarea 1.6 del plan, extendida a MatchHistory en 2.1): un
-    fallo al extraer un dataset puntual (o una fuente entera) se loguea
-    y no aborta el resto de la corrida; antes de guardar se compara cada
-    DataFrame contra el último CSV bueno conocido del mismo dataset para
-    detectar roturas silenciosas de la fuente.
+    Robustez (tarea 1.6 del plan, extendida a MatchHistory en 2.1 y a
+    ESPN en 1.3): un fallo al extraer un dataset puntual (o una fuente
+    entera) se loguea y no aborta el resto de la corrida; antes de
+    guardar se compara cada DataFrame contra el último CSV bueno
+    conocido del mismo dataset para detectar roturas silenciosas de la
+    fuente.
 
     Args:
         ligas: códigos de liga aceptados por soccerdata
@@ -174,6 +190,27 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
         df_match_history.info()
         resultados.append((MATCH_HISTORY_SOURCE, "match_history", df_match_history))
 
+    # ESPN (tarea 1.3 del plan): instancia separada, misma corrida y
+    # mismo timestamp `ts`, aislada en su propio try/except. Solo el
+    # calendario (`get_espn_schedule`) -- la exploración manual previa
+    # confirmó que `read_matchsheet()`/`read_lineup()` están rotos en
+    # soccerdata==1.9.1 contra la API actual de ESPN (ver
+    # docs/espn_cobertura.md y el docstring de futbol.ingestion.espn),
+    # así que no se invocan acá para no acumular fallos garantizados.
+    print("\n=== Calendario de partidos (ESPN) ===")
+    try:
+        espn = scdat.ESPN(leagues=ligas, seasons=temporadas)
+        df_espn_schedule = get_espn_schedule(espn)
+    except Exception:
+        logger.exception(
+            "Fallo al extraer 'espn_schedule' - se omite y se continúa con "
+            "las demás fuentes."
+        )
+        fallos.append("espn_schedule")
+    else:
+        df_espn_schedule.info()
+        resultados.append((ESPN_SOURCE, "espn_schedule", df_espn_schedule))
+
     if not resultados:
         raise RuntimeError(
             f"Todas las extracciones fallaron ({fallos}). Ver logs para detalle."
@@ -196,8 +233,8 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
         print(f"Guardado: {ruta}")
 
     # Verificación: tantos archivos CSV como DataFrames extraídos con
-    # éxito, por fuente (Sofascore y MatchHistory se guardan en
-    # subcarpetas separadas, así que se verifican por separado).
+    # éxito, por fuente (cada fuente se guarda en su propia subcarpeta,
+    # así que se verifican por separado).
     fuentes = sorted({source for source, _nombre, _df in resultados})
     for source in fuentes:
         destino = data_dir / source
@@ -220,7 +257,7 @@ def parse_args(config: FutbolConfig | None = None) -> argparse.Namespace:
     if config is None:
         config = load_config()
     parser = argparse.ArgumentParser(
-        description="Extracción de datos de fútbol desde Sofascore y MatchHistory."
+        description="Extracción de datos de fútbol desde Sofascore, MatchHistory y ESPN."
     )
     parser.add_argument(
         "--ligas",
