@@ -82,6 +82,12 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
 
 ## Estructura del proyecto
 - `src/futbol/` — paquete instalable (`pip install -e .`):
+  - `src/futbol/config.py` — carga de `config/config.yaml` (`load_config`) y
+    configuración explícita del área de `soccerdata` regida por
+    `SOCCERDATA_DIR`: `configure_soccerdata_cache` (tarea 1.6.3, redirige la
+    caché) y `sync_league_dict` (tarea 1.5, sincroniza el diccionario de
+    ligas custom). Ambas deben llamarse antes de importar `soccerdata` en
+    cualquier módulo — se invocan al importar `futbol.ingestion.cli`.
   - `src/futbol/transform/normalize.py` — normalización genérica (snake_case,
     fechas tz-naive, validaciones, guardado a CSV, detección de rotura
     silenciosa), sin atar a ninguna fuente en particular.
@@ -90,8 +96,21 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     `_filter_available_leagues`).
   - `src/futbol/ingestion/cli.py` — CLI delgado (`main()`/`parse_args()`),
     entry point `futbol-extract`.
+- `config/` — configuración versionada del proyecto:
+  - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
+    `cache_dir`, `log_level`.
+  - `config/league_dict.json` — diccionario custom de ligas para
+    `soccerdata` (arranca vacío, `{}`; agregar una liga real es una
+    decisión de negocio aparte). Se sincroniza automáticamente hacia
+    `$SOCCERDATA_DIR/config/league_dict.json` (la ubicación real que
+    `soccerdata` espera) cada vez que arranca `futbol-extract`, sin paso
+    manual — ver `sync_league_dict()` en `src/futbol/config.py`.
+  - `config/league_dict.md` — esquema documentado de `league_dict.json`
+    (JSON no admite comentarios, así que el ejemplo vive acá).
 - `pyproject.toml` — empaquetado (`setuptools`) y entry point `futbol-extract`.
 - `data/raw/<fuente>/` — CSVs generados por fuente (p.e. `data/raw/sofascore/`)
+- `data/cache/soccerdata/` — caché de `soccerdata` (tarea 1.6.3), no
+  versionada.
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
 - Scripts de procesamiento de datos — por crear

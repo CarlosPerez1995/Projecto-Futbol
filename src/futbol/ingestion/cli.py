@@ -24,6 +24,10 @@ Robustez (tarea 1.6 del plan):
   repo) se redirige a ``cache_dir`` de ``config/config.yaml`` (default
   ``data/cache/soccerdata``) vía ``SOCCERDATA_DIR``, fijada al importar
   este módulo, antes de importar ``soccerdata``.
+- El diccionario de ligas custom versionado (``config/league_dict.json``,
+  esquema en ``config/league_dict.md``) se sincroniza hacia
+  ``$SOCCERDATA_DIR/config/league_dict.json`` al importar este módulo,
+  también antes de importar ``soccerdata`` (tarea 1.5 del plan).
 """
 from __future__ import annotations
 
@@ -33,14 +37,27 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from futbol.config import FutbolConfig, configure_soccerdata_cache, load_config
+from futbol.config import (
+    FutbolConfig,
+    configure_soccerdata_cache,
+    load_config,
+    sync_league_dict,
+)
 
-# Tarea 1.6.3 del plan de robustez: la caché de soccerdata se configura
-# acá, antes de importar `soccerdata` (o `futbol.ingestion.sofascore`,
-# que lo importa) — `soccerdata/_config.py` lee `SOCCERDATA_DIR` como
-# código de nivel de módulo al importarse, así que fijar la variable de
-# entorno después de esos imports no tendría efecto.
+# Tareas 1.6.3 y 1.5 del plan de robustez: la caché y el diccionario de
+# ligas custom de soccerdata se configuran acá, antes de importar
+# `soccerdata` (o `futbol.ingestion.sofascore`, que lo importa) —
+# `soccerdata/_config.py` lee `SOCCERDATA_DIR` y mergea
+# `league_dict.json` como código de nivel de módulo al importarse
+# (verificado en el código instalado y de forma empírica: ver
+# docstrings de ambas funciones en `futbol.config`), así que hacer esto
+# después de esos imports no tendría ningún efecto. Nota: esto difiere
+# de "invocar sync_league_dict() al inicio de main()" tal como lo
+# describe el plan original — se verificó que para esta base de código
+# (donde `import soccerdata` ya ocurre a nivel de módulo, antes de que
+# `main()` se ejecute) esa ubicación sería tarde.
 configure_soccerdata_cache(load_config().cache_dir)
+sync_league_dict()
 
 import pandas as pd  # noqa: E402
 import soccerdata as scdat  # noqa: E402
