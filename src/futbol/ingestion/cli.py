@@ -1,13 +1,14 @@
 """CLI de extracción de datos de fútbol (entry point ``futbol-extract``).
 
 Delgado: orquesta las funciones de extracción de
-``futbol.ingestion.sofascore`` y de normalización/guardado de
-``futbol.transform.normalize``, sin reimplementar su lógica.
+``futbol.ingestion.sofascore``/``futbol.ingestion.match_history`` y de
+normalización/guardado de ``futbol.transform.normalize``, sin
+reimplementar su lógica.
 
-Los DataFrames extraídos se guardan como CSV en
-``data/raw/sofascore/`` (subcarpeta por fuente, para dejar sitio
-ordenado a futuras fuentes como ``MatchHistory`` o ``ESPN``) con un
-timestamp en el nombre de archivo. Por configuración de
+Los DataFrames extraídos se guardan como CSV en ``data/raw/<fuente>/``
+(subcarpeta por fuente: ``data/raw/sofascore/``, ``data/raw/match_history/``,
+y a futuro ``ESPN``) con un timestamp en el nombre de archivo, común a
+todas las fuentes de la misma corrida. Por configuración de
 ``.gitignore``, la carpeta ``data/`` no se versiona (son datos
 generados).
 
@@ -15,8 +16,9 @@ Robustez (tarea 1.6 del plan):
 - Antes de correr, se filtra la lista de ligas solicitadas contra
   ``Sofascore.available_leagues()`` en vez de asumir que las 8 ligas
   de ``LEAGUE_DICT`` están soportadas por esta fuente en particular.
-- Un fallo al extraer un dataset puntual no aborta toda la corrida:
-  se loguea y se continúa con los demás.
+- Un fallo al extraer un dataset puntual (o una fuente entera, como
+  MatchHistory) no aborta toda la corrida: se loguea y se continúa con
+  los demás.
 - Antes de guardar, se compara cada DataFrame contra el último CSV
   bueno conocido del mismo dataset para detectar roturas silenciosas
   (0 filas, columnas faltantes, caída drástica de filas).
@@ -28,6 +30,13 @@ Robustez (tarea 1.6 del plan):
   esquema en ``config/league_dict.md``) se sincroniza hacia
   ``$SOCCERDATA_DIR/config/league_dict.json`` al importar este módulo,
   también antes de importar ``soccerdata`` (tarea 1.5 del plan).
+
+Fuentes (tarea 2.1 / 1.2 del plan): además de ``Sofascore``, se extrae
+``MatchHistory`` (resultados + cuotas históricas de football-data.co.uk)
+en la misma corrida y con el mismo timestamp. Es una instancia separada
+de ``Sofascore`` -- son lectores distintos del paquete ``soccerdata``,
+la regla 9 de AGENTS.md ("una sola instancia por sesión") aplica por
+lector, no exige una única instancia entre lectores.
 """
 from __future__ import annotations
 
@@ -62,6 +71,10 @@ sync_league_dict()
 import pandas as pd  # noqa: E402
 import soccerdata as scdat  # noqa: E402
 
+from futbol.ingestion.match_history import (  # noqa: E402
+    MATCH_HISTORY_SOURCE,
+    get_match_history,
+)
 from futbol.ingestion.sofascore import (  # noqa: E402
     SOFASCORE_SOURCE,
     _filter_available_leagues,
@@ -81,18 +94,20 @@ logger = logging.getLogger(__name__)
 
 
 def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | None = None) -> None:
-    """Instancia Sofascore una vez y reutilízalo para toda la corrida.
+    """Instancia Sofascore y MatchHistory (por separado) y extrae todo en la misma corrida.
 
-    Extrae ligas, temporadas, posiciones y calendario para todas las
-    ``ligas``/``temporadas`` solicitadas en una sola corrida (soccerdata
-    hace el producto cruzado internamente), y guarda cada DataFrame como
-    CSV en ``data_dir/sofascore/`` (por defecto ``data/raw/sofascore/``)
-    con un timestamp en el nombre.
+    Extrae ligas, temporadas, posiciones y calendario de Sofascore, y
+    resultados + cuotas históricas de MatchHistory (football-data.co.uk,
+    tarea 2.1 / 1.2 del plan), para las mismas ``ligas``/``temporadas``
+    solicitadas, en una sola corrida con un timestamp común. Cada
+    DataFrame se guarda como CSV en ``data_dir/<fuente>/`` (por defecto
+    ``data/raw/sofascore/`` y ``data/raw/match_history/``).
 
-    Robustez (tarea 1.6 del plan): un fallo al extraer un dataset
-    puntual se loguea y no aborta el resto de la corrida; antes de
-    guardar se compara cada DataFrame contra el último CSV bueno
-    conocido para detectar roturas silenciosas de la fuente.
+    Robustez (tarea 1.6 del plan, extendida a MatchHistory en 2.1): un
+    fallo al extraer un dataset puntual (o una fuente entera) se loguea
+    y no aborta el resto de la corrida; antes de guardar se compara cada
+    DataFrame contra el último CSV bueno conocido del mismo dataset para
+    detectar roturas silenciosas de la fuente.
 
     Args:
         ligas: códigos de liga aceptados por soccerdata
@@ -107,8 +122,9 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
     ligas = _filter_available_leagues(ligas)
     logger.info("Ligas seleccionadas para esta corrida: %s", ligas)
 
-    # Una sola instancia para toda la sesión (regla 9 de AGENTS.md),
-    # compartida entre todas las ligas/temporadas de la corrida.
+    # Una sola instancia de Sofascore para toda la sesión (regla 9 de
+    # AGENTS.md), compartida entre todas las ligas/temporadas de la
+    # corrida.
     sofascore = scdat.Sofascore(leagues=ligas, seasons=temporadas)
 
     extractores: list[tuple[str, str, Callable[[scdat.Sofascore], pd.DataFrame]]] = [
@@ -120,7 +136,9 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
 
     # Extracción con aislamiento de fallos: un lector que falla no debe
     # abortar la corrida completa de los demás (tarea 1.6 del plan).
-    resultados: list[tuple[str, pd.DataFrame]] = []
+    # Cada resultado guarda también su fuente, para poder guardarlo en
+    # `data/raw/<fuente>/` más abajo sin asumir una única fuente.
+    resultados: list[tuple[str, str, pd.DataFrame]] = []  # (source, nombre, df)
     fallos: list[str] = []
     for nombre, titulo, extractor in extractores:
         print(f"\n=== {titulo} ===")
@@ -134,7 +152,27 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
             fallos.append(nombre)
             continue
         df.info()
-        resultados.append((nombre, df))
+        resultados.append((SOFASCORE_SOURCE, nombre, df))
+
+    # MatchHistory (tarea 2.1 / 1.2 del plan): instancia separada de
+    # Sofascore -- son lectores distintos, la regla 9 de AGENTS.md de
+    # instancia única aplica por lector, no entre lectores -- pero misma
+    # corrida y mismo timestamp `ts`. Aislada en su propio try/except
+    # (mismo patrón de la tarea 1.6.4): un fallo acá no afecta lo ya
+    # extraído de Sofascore arriba.
+    print("\n=== Resultados y cuotas históricas (MatchHistory) ===")
+    try:
+        match_history = scdat.MatchHistory(leagues=ligas, seasons=temporadas)
+        df_match_history = get_match_history(match_history)
+    except Exception:
+        logger.exception(
+            "Fallo al extraer 'match_history' - se omite y se continúa con "
+            "las demás fuentes."
+        )
+        fallos.append("match_history")
+    else:
+        df_match_history.info()
+        resultados.append((MATCH_HISTORY_SOURCE, "match_history", df_match_history))
 
     if not resultados:
         raise RuntimeError(
@@ -143,7 +181,7 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
 
     # Validación de naming (snake_case, sin mayúsculas, sin espacios)
     # y log de dtypes esperados por DataFrame.
-    for nombre, df in resultados:
+    for _source, nombre, df in resultados:
         _log_dtypes(nombre, df)
         _validate(nombre, df)
     print(
@@ -151,23 +189,28 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
         f"{len(resultados)} DataFrames."
     )
 
-    # Detección de rotura silenciosa + guardado en data/raw/sofascore/.
-    for nombre, df in resultados:
-        _check_rotura_silenciosa(nombre, df, data_dir, SOFASCORE_SOURCE, ts)
-        ruta = _save_csv(df, data_dir, SOFASCORE_SOURCE, nombre, ts)
+    # Detección de rotura silenciosa + guardado en data/raw/<fuente>/.
+    for source, nombre, df in resultados:
+        _check_rotura_silenciosa(nombre, df, data_dir, source, ts)
+        ruta = _save_csv(df, data_dir, source, nombre, ts)
         print(f"Guardado: {ruta}")
 
-    # Verificación: tantos archivos CSV como DataFrames extraídos con éxito.
-    destino = data_dir / SOFASCORE_SOURCE
-    archivos_csv = sorted(destino.glob(f"*_{ts}.csv"))
-    assert len(archivos_csv) == len(resultados), (
-        f"Se esperaban {len(resultados)} CSV en {destino} con ts {ts}, "
-        f"pero hay {len(archivos_csv)}."
-    )
-    print(
-        f"\nOK: {len(archivos_csv)} archivos CSV generados en {destino} "
-        f"(esperados: {len(resultados)})."
-    )
+    # Verificación: tantos archivos CSV como DataFrames extraídos con
+    # éxito, por fuente (Sofascore y MatchHistory se guardan en
+    # subcarpetas separadas, así que se verifican por separado).
+    fuentes = sorted({source for source, _nombre, _df in resultados})
+    for source in fuentes:
+        destino = data_dir / source
+        esperados = sum(1 for s, _n, _d in resultados if s == source)
+        archivos_csv = sorted(destino.glob(f"*_{ts}.csv"))
+        assert len(archivos_csv) == esperados, (
+            f"Se esperaban {esperados} CSV en {destino} con ts {ts}, "
+            f"pero hay {len(archivos_csv)}."
+        )
+        print(
+            f"\nOK: {len(archivos_csv)} archivos CSV generados en {destino} "
+            f"(esperados: {esperados})."
+        )
 
     if fallos:
         print(f"\nAVISO: {len(fallos)} fuente(s) fallaron y se omitieron: {fallos}")
@@ -177,7 +220,7 @@ def parse_args(config: FutbolConfig | None = None) -> argparse.Namespace:
     if config is None:
         config = load_config()
     parser = argparse.ArgumentParser(
-        description="Extracción de datos de fútbol desde Sofascore."
+        description="Extracción de datos de fútbol desde Sofascore y MatchHistory."
     )
     parser.add_argument(
         "--ligas",
