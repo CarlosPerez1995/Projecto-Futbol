@@ -47,6 +47,17 @@ actual de ESPN (``KeyError: 'form'`` en el 100% de una muestra real),
 así que esas dos funciones quedan implementadas en
 ``futbol.ingestion.espn`` pero fuera del pipeline productivo hasta que
 se corrija upstream.
+
+Fuentes (tarea 1.7 del plan): también se extrae xG por equipo y partido
+de Understat (``get_understat_team_match_stats``), instancia separada,
+misma corrida/timestamp. Solo esta función está integrada acá -- la
+exploración manual previa (ver ``docs/understat_vs_fbref.md``) midió
+~26 minutos y 1753 requests HTTP para que
+``get_understat_shot_events()`` cubra una sola temporada de las 5 ligas
+(sin errores ni señales de rate-limit, pero volumen prohibitivo para el
+flujo automático por defecto), así que esa función queda implementada
+en ``futbol.ingestion.understat`` pero fuera del pipeline productivo,
+disponible para un backfill manual puntual.
 """
 from __future__ import annotations
 
@@ -97,6 +108,10 @@ from futbol.ingestion.sofascore import (  # noqa: E402
     get_seasons,
     get_standings,
 )
+from futbol.ingestion.understat import (  # noqa: E402
+    UNDERSTAT_SOURCE,
+    get_understat_team_match_stats,
+)
 from futbol.transform.normalize import (  # noqa: E402
     _check_rotura_silenciosa,
     _log_dtypes,
@@ -108,22 +123,24 @@ logger = logging.getLogger(__name__)
 
 
 def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | None = None) -> None:
-    """Instancia Sofascore, MatchHistory y ESPN (por separado) y extrae todo en la misma corrida.
+    """Instancia Sofascore, MatchHistory, ESPN y Understat (por separado) y extrae todo en la misma corrida.
 
     Extrae ligas, temporadas, posiciones y calendario de Sofascore,
     resultados + cuotas históricas de MatchHistory (football-data.co.uk,
-    tarea 2.1 / 1.2 del plan) y calendario de ESPN (tarea 1.3 del plan),
-    para las mismas ``ligas``/``temporadas`` solicitadas, en una sola
-    corrida con un timestamp común. Cada DataFrame se guarda como CSV en
+    tarea 2.1 / 1.2 del plan), calendario de ESPN (tarea 1.3 del plan) y
+    xG por equipo y partido de Understat (tarea 1.7 del plan), para las
+    mismas ``ligas``/``temporadas`` solicitadas, en una sola corrida con
+    un timestamp común. Cada DataFrame se guarda como CSV en
     ``data_dir/<fuente>/`` (por defecto ``data/raw/sofascore/``,
-    ``data/raw/match_history/`` y ``data/raw/espn/``).
+    ``data/raw/match_history/``, ``data/raw/espn/`` y
+    ``data/raw/understat/``).
 
-    Robustez (tarea 1.6 del plan, extendida a MatchHistory en 2.1 y a
-    ESPN en 1.3): un fallo al extraer un dataset puntual (o una fuente
-    entera) se loguea y no aborta el resto de la corrida; antes de
-    guardar se compara cada DataFrame contra el último CSV bueno
-    conocido del mismo dataset para detectar roturas silenciosas de la
-    fuente.
+    Robustez (tarea 1.6 del plan, extendida a MatchHistory en 2.1, a
+    ESPN en 1.3 y a Understat en 1.7): un fallo al extraer un dataset
+    puntual (o una fuente entera) se loguea y no aborta el resto de la
+    corrida; antes de guardar se compara cada DataFrame contra el último
+    CSV bueno conocido del mismo dataset para detectar roturas
+    silenciosas de la fuente.
 
     Args:
         ligas: códigos de liga aceptados por soccerdata
@@ -211,6 +228,30 @@ def run_extraction(ligas: list[str], temporadas: list[str], data_dir: Path | Non
         df_espn_schedule.info()
         resultados.append((ESPN_SOURCE, "espn_schedule", df_espn_schedule))
 
+    # Understat (tarea 1.7 del plan): instancia separada, misma corrida y
+    # mismo timestamp `ts`, aislada en su propio try/except. Solo xG por
+    # equipo y partido (`get_understat_team_match_stats`) -- la
+    # exploración manual previa (ver docs/understat_vs_fbref.md y el
+    # docstring de futbol.ingestion.understat) midió ~26 minutos y 1753
+    # requests HTTP para que `get_understat_shot_events()` cubra una sola
+    # temporada, así que esa función no se invoca acá para no inflar la
+    # duración de cada corrida del pipeline productivo.
+    print("\n=== xG por equipo y partido (Understat) ===")
+    try:
+        understat = scdat.Understat(leagues=ligas, seasons=temporadas)
+        df_understat_team_match_stats = get_understat_team_match_stats(understat)
+    except Exception:
+        logger.exception(
+            "Fallo al extraer 'understat_team_match_stats' - se omite y se "
+            "continúa con las demás fuentes."
+        )
+        fallos.append("understat_team_match_stats")
+    else:
+        df_understat_team_match_stats.info()
+        resultados.append(
+            (UNDERSTAT_SOURCE, "understat_team_match_stats", df_understat_team_match_stats)
+        )
+
     if not resultados:
         raise RuntimeError(
             f"Todas las extracciones fallaron ({fallos}). Ver logs para detalle."
@@ -257,7 +298,7 @@ def parse_args(config: FutbolConfig | None = None) -> argparse.Namespace:
     if config is None:
         config = load_config()
     parser = argparse.ArgumentParser(
-        description="Extracción de datos de fútbol desde Sofascore, MatchHistory y ESPN."
+        description="Extracción de datos de fútbol desde Sofascore, MatchHistory, ESPN y Understat."
     )
     parser.add_argument(
         "--ligas",

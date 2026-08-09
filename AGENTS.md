@@ -94,6 +94,20 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   - `src/futbol/ingestion/sofascore.py` — extracción específica de Sofascore
     (`get_leagues`, `get_seasons`, `get_standings`, `get_schedule`,
     `_filter_available_leagues`).
+  - `src/futbol/ingestion/match_history.py` — resultados + cuotas
+    históricas de football-data.co.uk vía `MatchHistory`
+    (`get_match_history`).
+  - `src/futbol/ingestion/espn.py` — calendario vía ESPN
+    (`get_espn_schedule`, integrada al pipeline; `get_espn_matchsheet`/
+    `get_espn_lineup` implementadas pero fuera del flujo automático por
+    defecto — rotas en `soccerdata==1.9.1` contra la API actual, ver
+    `docs/espn_cobertura.md`).
+  - `src/futbol/ingestion/understat.py` — xG por equipo/partido y por tiro
+    vía Understat (`get_understat_team_match_stats`, integrada al
+    pipeline; `get_understat_shot_events` implementada pero fuera del
+    flujo automático por defecto — no por rotura, sino por volumen medido
+    de ~1700+ requests/~26 min por temporada sin `match_id`, ver
+    `docs/understat_vs_fbref.md`).
   - `src/futbol/ingestion/cli.py` — CLI delgado (`main()`/`parse_args()`),
     entry point `futbol-extract`.
 - `config/` — configuración versionada del proyecto:
@@ -108,7 +122,8 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   - `config/league_dict.md` — esquema documentado de `league_dict.json`
     (JSON no admite comentarios, así que el ejemplo vive acá).
 - `pyproject.toml` — empaquetado (`setuptools`) y entry point `futbol-extract`.
-- `data/raw/<fuente>/` — CSVs generados por fuente (p.e. `data/raw/sofascore/`)
+- `data/raw/<fuente>/` — CSVs generados por fuente (p.e. `data/raw/sofascore/`,
+  `data/raw/match_history/`, `data/raw/espn/`, `data/raw/understat/`)
 - `data/cache/soccerdata/` — caché de `soccerdata` (tarea 1.6.3), no
   versionada.
 - `.venv/` — entorno virtual (no versionar en git)
