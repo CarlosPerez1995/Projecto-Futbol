@@ -5,7 +5,11 @@ Proyecto personal de predicción de apuestas de fútbol usando la librería `soc
 Flujo: Extracción -> Transformación/normalización -> Modelo de datos en BD ->
 Modelos estadísticos/predictivos/prescriptivos -> Recomendaciones de apuestas.
 
-Estado actual: **etapa inicial (solo extracción de datos)**.
+Estado actual: **fase 1 (extracción) completa desde el 8 ago 2026** — multi-fuente
+(Sofascore, MatchHistory, ESPN, Understat) con config/secrets management, caché
+explícita de `soccerdata`, tests base y CI mínimo. **Fase 2 (modelo de
+datos/BD SQLite) sin empezar**, en pausa desde oct 2026 mientras se resuelve
+prioridad frente a Punky Soluciones.
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
