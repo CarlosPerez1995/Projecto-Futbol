@@ -135,6 +135,31 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
 - Scripts de procesamiento de datos — por crear
 - Esquema de base de datos — por definir
 
+## OpenCode como operativo (investigación 9 oct, no activado)
+
+Fútbol sigue en pausa (fase 2 bloqueada, ver hub). Esto es preparación para cuando
+se reactive, no una integración en uso.
+
+- Ya instalado y logueado globalmente en `punky` (`opencode` v1.18.22, credenciales
+  de OpenRouter y NVIDIA NIM en `~/.local/share/opencode/auth.json`) — no hace falta
+  nada nuevo específico de este proyecto para tener el operativo disponible.
+- OpenCode lee `AGENTS.md` del repo automáticamente como contexto (igual que Claude
+  Code), así que este archivo ya le sirve sin trabajo adicional.
+- Asignación no interactiva: `opencode run "<tarea>" --dir <ruta-del-repo> --model
+  <provider/model> --agent <agent>`. NO usar `--auto` (aprueba permisos solo,
+  "dangerous") — las tareas deben pedir permiso igual que esta sesión, y el jefe de
+  proyecto revisa el diff antes de aceptar.
+- Permisos configurables por acción (`read`/`edit`/`bash`/...: `ask`/`allow`/`deny`)
+  en `opencode.jsonc` — mapear a los 3 niveles de `PROTOCOLO.md` del hub (libre /
+  con orden de Carlos / solo Carlos) cuando se le asigne una tarea real.
+- Modelos gratis de NVIDIA NIM/OpenRouter: varios registran o entrenan con los
+  prompts (ver `HERRAMIENTAS.md` del hub). Para fase 2 (esquema de BD, datos
+  públicos de fútbol) el riesgo es bajo; para fases 4-5 (modelos predictivos,
+  lógica de apuestas propia) revisar antes cuál modelo usar.
+- Para que no choque con el trabajo del jefe de proyecto en el mismo repo: que
+  OpenCode trabaje en su propia rama (`feature/opencode-<tarea>`) o un `git
+  worktree` separado, nunca directo sobre `desarrollo`.
+
 ## Comandos útiles
 - Activar entorno: `source .venv/bin/activate`
 - Instalar dependencias: `pip install -r requirements.txt`
