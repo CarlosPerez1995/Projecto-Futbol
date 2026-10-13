@@ -8,8 +8,9 @@ Modelos estadísticos/predictivos/prescriptivos -> Recomendaciones de apuestas.
 Estado actual: **fase 1 (extracción) completa desde el 8 ago 2026** — multi-fuente
 (Sofascore, MatchHistory, ESPN, Understat) con config/secrets management, caché
 explícita de `soccerdata`, tests base y CI mínimo. **Fase 2 (modelo de
-datos/BD SQLite) retomada el 13 oct 2026** (tarea 2.1, esquema, hecha —
-`db/schema_v1.sql`; 2.2-2.4 pendientes).
+datos/BD SQLite) retomada el 13 oct 2026** (tarea 2.1, esquema, y 2.2, módulo
+de conexión, hechas — `db/schema_v1.sql`, `src/futbol/db/database.py`; 2.3-2.4
+pendientes).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -114,6 +115,10 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     `docs/understat_vs_fbref.md`).
   - `src/futbol/ingestion/cli.py` — CLI delgado (`main()`/`parse_args()`),
     entry point `futbol-extract`.
+  - `src/futbol/db/database.py` — conexión a la BD SQLite (tarea 2.2):
+    `get_connection`, `close_connection`, `init_db` (aplica
+    `db/schema_v1.sql`, idempotente — detecta tablas ya creadas en vez de
+    depender de `IF NOT EXISTS` en el `.sql` versionado).
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
