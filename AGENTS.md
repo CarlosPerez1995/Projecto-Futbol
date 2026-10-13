@@ -8,9 +8,11 @@ Modelos estadísticos/predictivos/prescriptivos -> Recomendaciones de apuestas.
 Estado actual: **fase 1 (extracción) completa desde el 8 ago 2026** — multi-fuente
 (Sofascore, MatchHistory, ESPN, Understat) con config/secrets management, caché
 explícita de `soccerdata`, tests base y CI mínimo. **Fase 2 (modelo de
-datos/BD SQLite) retomada el 13 oct 2026** (tarea 2.1, esquema, y 2.2, módulo
-de conexión, hechas — `db/schema_v1.sql`, `src/futbol/db/database.py`; 2.3-2.4
-pendientes).
+datos/BD SQLite) retomada el 13 oct 2026** (2.1 esquema y 2.2 conexión hechas;
+2.3 loader parcial — catálogos + identidad de equipos/partidos resueltos,
+`src/futbol/db/load_data.py`; falta la parte de matches/fixtures/odds con
+marcador, bloqueada por confirmación de upsert pendiente con Carlos; 2.4
+pendiente).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -119,9 +121,20 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     `get_connection`, `close_connection`, `init_db` (aplica
     `db/schema_v1.sql`, idempotente — detecta tablas ya creadas en vez de
     depender de `IF NOT EXISTS` en el `.sql` versionado).
+  - `src/futbol/db/load_data.py` — loader CSV→BD (tarea 2.3, solo la
+    parte sin confirmación de upsert pendiente): `load_leagues`,
+    `load_seasons`, `resolve_team` (usa `config/team_aliases.json`),
+    `resolve_or_create_match`/`load_matches` (identidad de partido por
+    ventana de ±6h entre fuentes, no igualdad exacta de hora — ver
+    docstring del módulo). NO escribe marcador ni `fixtures`/`odds`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
+  - `config/team_aliases.json` — mapeo manual de nombres de equipo por
+    liga/fuente (tarea 2.3), curado y verificado contra los CSV reales
+    — ver `docs/team_aliases_notas.md`. Un equipo nuevo (ascenso/
+    descenso de otra temporada) que no esté acá hace fallar la carga
+    con error explícito, no se adivina.
   - `config/league_dict.json` — diccionario custom de ligas para
     `soccerdata` (arranca vacío, `{}`; agregar una liga real es una
     decisión de negocio aparte). Se sincroniza automáticamente hacia
