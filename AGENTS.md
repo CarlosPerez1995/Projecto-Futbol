@@ -8,8 +8,8 @@ Modelos estadísticos/predictivos/prescriptivos -> Recomendaciones de apuestas.
 Estado actual: **fase 1 (extracción) completa desde el 8 ago 2026** — multi-fuente
 (Sofascore, MatchHistory, ESPN, Understat) con config/secrets management, caché
 explícita de `soccerdata`, tests base y CI mínimo. **Fase 2 (modelo de
-datos/BD SQLite) sin empezar**, en pausa desde oct 2026 mientras se resuelve
-prioridad frente a Punky Soluciones.
+datos/BD SQLite) retomada el 13 oct 2026** (tarea 2.1, esquema, hecha —
+`db/schema_v1.sql`; 2.2-2.4 pendientes).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -130,6 +130,14 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   `data/raw/match_history/`, `data/raw/espn/`, `data/raw/understat/`)
 - `data/cache/soccerdata/` — caché de `soccerdata` (tarea 1.6.3), no
   versionada.
+- `db/schema_v1.sql` — esquema de la BD SQLite (tarea 2.1). Catálogos
+  `leagues`/`seasons` por clave natural común entre fuentes; `teams`/`matches`
+  canónicos con tablas de mapeo (`team_source_ids`/`match_source_ids`) porque
+  Sofascore/ESPN/Understat/MatchHistory no comparten id ni nombre de equipo o
+  partido (ver comentario de divergencia al inicio del archivo). `odds` en
+  formato largo (no columnas fijas por casa de apuestas, ver
+  `docs/odds_columns_map.md`). Versionado: cambios futuros van en
+  `schema_v2.sql`, nunca editando este archivo.
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
 - Scripts de procesamiento de datos — por crear
