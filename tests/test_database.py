@@ -1,7 +1,7 @@
 """Tests de ``src/futbol/db/database.py`` contra una BD SQLite temporal.
 
 No hacen ninguna llamada de red: solo usan ``sqlite3`` (stdlib) y
-``db/schema_v1.sql`` del propio repo.
+``db/schema_v2.sql`` del propio repo.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 
 from futbol.db.database import close_connection, get_connection, init_db
 
-REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v1.sql"
+REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v2.sql"
 
 
 def test_get_connection_crea_carpeta_contenedora_y_activa_foreign_keys(tmp_path: Path):
@@ -34,7 +34,7 @@ def test_close_connection_cierra_la_conexion(tmp_path: Path):
         conn.execute("SELECT 1;")
 
 
-def test_init_db_crea_todas_las_tablas_de_schema_v1(tmp_path: Path):
+def test_init_db_crea_todas_las_tablas_de_schema_v2(tmp_path: Path):
     db_path = tmp_path / "futbol.db"
 
     init_db(db_path, REPO_SCHEMA_PATH)

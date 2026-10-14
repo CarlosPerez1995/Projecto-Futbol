@@ -8,11 +8,13 @@ Modelos estadísticos/predictivos/prescriptivos -> Recomendaciones de apuestas.
 Estado actual: **fase 1 (extracción) completa desde el 8 ago 2026** — multi-fuente
 (Sofascore, MatchHistory, ESPN, Understat) con config/secrets management, caché
 explícita de `soccerdata`, tests base y CI mínimo. **Fase 2 (modelo de
-datos/BD SQLite) retomada el 13 oct 2026** (2.1 esquema y 2.2 conexión hechas;
-2.3 loader parcial — catálogos + identidad de equipos/partidos resueltos,
-`src/futbol/db/load_data.py`; falta la parte de matches/fixtures/odds con
-marcador, bloqueada por confirmación de upsert pendiente con Carlos; 2.4
-pendiente).
+datos/BD SQLite) retomada el 13 oct 2026** (2.1 esquema v2 — histórico de
+cuotas, ver `db/schema_v2.sql` — y 2.2 conexión hechas; 2.3 casi completa:
+catálogos, identidad de equipos/partidos, upsert real de marcador y
+cuotas 1x2 con histórico, todo en `src/futbol/db/load_data.py`; falta
+`fixtures`, bloqueado por una pregunta pendiente a Carlos sobre si
+necesita histórico o upsert real; over/under y hándicap asiático de
+`odds` deferidos a propósito, no implementados; 2.4 pendiente).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -119,14 +121,19 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     entry point `futbol-extract`.
   - `src/futbol/db/database.py` — conexión a la BD SQLite (tarea 2.2):
     `get_connection`, `close_connection`, `init_db` (aplica
-    `db/schema_v1.sql`, idempotente — detecta tablas ya creadas en vez de
+    `db/schema_v2.sql`, idempotente — detecta tablas ya creadas en vez de
     depender de `IF NOT EXISTS` en el `.sql` versionado).
-  - `src/futbol/db/load_data.py` — loader CSV→BD (tarea 2.3, solo la
-    parte sin confirmación de upsert pendiente): `load_leagues`,
-    `load_seasons`, `resolve_team` (usa `config/team_aliases.json`),
-    `resolve_or_create_match`/`load_matches` (identidad de partido por
-    ventana de ±6h entre fuentes, no igualdad exacta de hora — ver
-    docstring del módulo). NO escribe marcador ni `fixtures`/`odds`.
+  - `src/futbol/db/load_data.py` — loader CSV→BD (tarea 2.3): catálogos
+    (`load_leagues`/`load_seasons`, `INSERT OR IGNORE`), `resolve_team`
+    (usa `config/team_aliases.json`), `resolve_or_create_match`/
+    `load_matches` (identidad de partido por ventana de ±6h entre
+    fuentes, no igualdad exacta de hora — ver docstring del módulo),
+    `upsert_match_result` (marcador: upsert real, decisión de Carlos),
+    `load_odds_1x2`/`_parse_1x2_odds` (cuotas 1x2: histórico completo,
+    `captured_at` = timestamp de la corrida de extracción, no de
+    inserción — ver `db/schema_v2.sql`). Over/under y hándicap asiático
+    de `odds`, y la tabla `fixtures`, no implementados todavía (ver
+    "Estado actual" arriba).
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
@@ -148,14 +155,24 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   `data/raw/match_history/`, `data/raw/espn/`, `data/raw/understat/`)
 - `data/cache/soccerdata/` — caché de `soccerdata` (tarea 1.6.3), no
   versionada.
-- `db/schema_v1.sql` — esquema de la BD SQLite (tarea 2.1). Catálogos
-  `leagues`/`seasons` por clave natural común entre fuentes; `teams`/`matches`
-  canónicos con tablas de mapeo (`team_source_ids`/`match_source_ids`) porque
-  Sofascore/ESPN/Understat/MatchHistory no comparten id ni nombre de equipo o
-  partido (ver comentario de divergencia al inicio del archivo). `odds` en
-  formato largo (no columnas fijas por casa de apuestas, ver
-  `docs/odds_columns_map.md`). Versionado: cambios futuros van en
-  `schema_v2.sql`, nunca editando este archivo.
+- `db/schema_v1.sql` — esquema original de la BD SQLite (tarea 2.1), **ya
+  superado por `schema_v2.sql`, no editar** (versionado: queda como historial,
+  nunca se toca). Catálogos `leagues`/`seasons` por clave natural común entre
+  fuentes; `teams`/`matches` canónicos con tablas de mapeo
+  (`team_source_ids`/`match_source_ids`) porque Sofascore/ESPN/Understat/
+  MatchHistory no comparten id ni nombre de equipo o partido (ver comentario
+  de divergencia al inicio del archivo).
+- `db/schema_v2.sql` — esquema vigente. Única diferencia real respecto a v1:
+  `odds` agrega `captured_at` a la `UNIQUE` (decisión de Carlos, 13 oct:
+  guardar histórico completo de cuotas, no sobrescribir — insumo para
+  modelos de fases posteriores) — `captured_at` es el timestamp de la
+  corrida de extracción, no de inserción (si no, recargar el mismo CSV
+  inventaría "cambios" de cuota que nunca pasaron). `odds` sigue en formato
+  largo (no columnas fijas por casa, ver `docs/odds_columns_map.md`); `line`
+  es `NOT NULL DEFAULT 0` (no `NULL`) — un bug real encontrado validando v2:
+  SQLite trata cada `NULL` como distinto en una `UNIQUE`, así que con `line`
+  en `NULL` (mercado 1x2) la restricción no bloqueaba duplicados exactos.
+  Próximos cambios de esquema van en `schema_v3.sql`, nunca editando v1 ni v2.
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
 - Scripts de procesamiento de datos — por crear

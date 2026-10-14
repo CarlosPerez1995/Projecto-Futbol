@@ -1,21 +1,32 @@
-"""Carga de catálogos y resolución de identidad entre fuentes (tarea 2.3,
-solo la parte que NO depende de la confirmación de upsert pendiente).
+"""Carga de catálogos, identidad entre fuentes y resultados/cuotas
+(tarea 2.3) contra los CSV reales de ``data/raw/``.
+
+Semántica de carga por tabla, decidida por Carlos el 13 oct 2026:
+
+- ``leagues``/``seasons``/``teams`` (catálogos que no cambian):
+  ``INSERT OR IGNORE`` — ``load_leagues``, ``load_seasons``,
+  ``resolve_team``.
+- ``matches`` (marcador/estado): upsert real, sobrescribe con el valor
+  más reciente — ``upsert_match_result``, llamado desde
+  ``load_matches``. Crear un partido que todavía no existe no depende
+  de esta decisión (no hay fila previa con la que entrar en conflicto),
+  por eso esa parte ya se había implementado antes de tener la
+  confirmación.
+- ``odds`` (cuotas): NO se sobrescribe — se guarda el histórico
+  completo (cada corrida de extracción es una fila nueva), porque
+  Carlos lo quiere como insumo para modelos de fases posteriores
+  (movimiento de cuota antes del partido). Esto cambió el esquema:
+  ``db/schema_v2.sql`` agrega ``captured_at`` a la tabla ``odds`` (ver
+  ese archivo). Implementado solo para el mercado 1x2 por ahora
+  (``load_odds_1x2``) — over/under y hándicap asiático quedan fuera de
+  alcance de esta iteración, no perdidos, ver docstring de esa función.
+- ``fixtures`` (tabla de posiciones): todavía sin confirmar con Carlos
+  si necesita histórico (como odds) o le alcanza con upsert real (como
+  matches) — no implementado, pendiente de esa respuesta.
 
 Resuelve ``leagues``/``seasons`` (clave natural común a las 4 fuentes,
-ver ``db/schema_v1.sql``) y ``teams``/``matches`` (catálogos canónicos
-con tabla de mapeo por fuente, ``team_source_ids``/``match_source_ids``)
-contra los CSV reales de ``data/raw/``.
-
-Deliberadamente NO escribe ``home_score``/``away_score`` en ``matches``
-(quedan en su default de ``schema_v1.sql``, ``NULL``/``'scheduled'``) ni
-toca ``fixtures``/``odds``: esas tres tablas son justo las que cambian
-de valor entre corridas (un marcador que se corrige, una cuota que se
-actualiza), y la tarea 2.3 completa está bloqueada hasta que Carlos
-confirme si eso debe sobreescribirse (upsert real) o ignorarse
-(``INSERT OR IGNORE`` como decía el Excel original) — ver AGENTS.md.
-Crear un partido nuevo que todavía no existe sí es seguro sin esa
-confirmación: no hay ninguna fila previa con la que entrar en
-conflicto.
+ver ``db/schema_v2.sql``) y ``teams``/``matches`` (catálogos canónicos
+con tabla de mapeo por fuente, ``team_source_ids``/``match_source_ids``).
 
 La resolución de equipos usa ``config/team_aliases.json``, curado a
 mano comparando los nombres reales de los 110 equipos (23+23+21+20+23,
@@ -41,6 +52,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -53,27 +65,47 @@ DEFAULT_TEAM_ALIASES_PATH = Path("config/team_aliases.json")
 DEFAULT_RAW_DIR = Path("data/raw")
 
 # fuente -> subcarpeta en data/raw/, prefijo del CSV, columna de id nativo
-# del partido (None si la fuente no trae, como match_history) y columnas de
+# del partido (None si la fuente no trae, como match_history), columnas de
 # id nativo de equipo local/visitante (None si no, solo Understat las trae
-# de las 4 fuentes ya integradas — ver docs/team_aliases_notas.md)
+# de las 4 fuentes ya integradas — ver docs/team_aliases_notas.md) y columnas
+# de marcador local/visitante (None si esta fuente no lo trae, como ESPN en
+# la integración actual — ver espn_cobertura.md: solo calendario, no
+# matchsheet/resultado)
 _MATCH_CSV_SPEC = {
     "sofascore": {
         "folder": "sofascore", "prefix": "schedule", "game_id_col": "game_id",
         "home_team_id_col": None, "away_team_id_col": None,
+        "home_score_col": "home_score", "away_score_col": "away_score",
     },
     "espn": {
         "folder": "espn", "prefix": "espn_schedule", "game_id_col": "game_id",
         "home_team_id_col": None, "away_team_id_col": None,
+        "home_score_col": None, "away_score_col": None,
     },
     "understat": {
         "folder": "understat", "prefix": "understat_team_match_stats", "game_id_col": "game_id",
         "home_team_id_col": "home_team_id", "away_team_id_col": "away_team_id",
+        "home_score_col": "home_goals", "away_score_col": "away_goals",
     },
     "match_history": {
         "folder": "match_history", "prefix": "match_history", "game_id_col": None,
         "home_team_id_col": None, "away_team_id_col": None,
+        "home_score_col": "fthg", "away_score_col": "ftag",
     },
 }
+
+# Prefijos de casa de apuestas/agregado conocidos para el mercado 1x2 (ver
+# docs/odds_columns_map.md, tomado de football-data.co.uk/notes.txt) ya en
+# minúsculas (post _to_snake_case, que no inserta guion bajo en estas siglas
+# cortas: "B365" -> "b365"). Alcance reducido a propósito a 1x2 — over/under
+# y hándicap asiático quedan para una iteración futura (ver load_odds_1x2).
+_1X2_BOOKMAKER_PREFIXES = [
+    "1xb", "b365", "bf", "bfd", "bmgm", "bv", "bs", "bw", "cl", "gb",
+    "iw", "lb", "pp", "ps", "p", "sk", "so", "sb", "sj", "sy", "vc",
+    "wh", "bfe", "max", "avg",
+]
+
+_TIMESTAMP_RE = re.compile(r"_(\d{8})_(\d{6})\.csv$")
 
 
 def load_team_aliases(path: Path = DEFAULT_TEAM_ALIASES_PATH) -> dict:
@@ -92,6 +124,24 @@ def _latest_csv(folder: Path, prefix: str) -> Path | None:
         return None
     candidatos = sorted(folder.glob(f"{prefix}_*.csv"))
     return candidatos[-1] if candidatos else None
+
+
+def _timestamp_from_filename(path: Path) -> str:
+    """Extrae el timestamp ``<prefijo>_YYYYMMDD_HHMMSS.csv`` del nombre.
+
+    Usado como ``captured_at`` de ``odds`` (ver docstring del módulo):
+    tiene que ser cuándo se extrajeron los datos, no cuándo corre el
+    loader.
+    """
+    m = _TIMESTAMP_RE.search(path.name)
+    if m is None:
+        raise ValueError(
+            f"_timestamp_from_filename: {path.name!r} no tiene el formato "
+            "<prefijo>_YYYYMMDD_HHMMSS.csv"
+        )
+    fecha, hora = m.groups()
+    dt = datetime.strptime(fecha + hora, "%Y%m%d%H%M%S")
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def load_leagues(conn: sqlite3.Connection, raw_dir: Path = DEFAULT_RAW_DIR) -> int:
@@ -324,14 +374,44 @@ def _optional_str(row: pd.Series, col_name: str | None) -> str | None:
     return None
 
 
+def _optional_int(row: pd.Series, col_name: str | None) -> int | None:
+    if col_name and col_name in row.index and pd.notna(row[col_name]):
+        return int(row[col_name])
+    return None
+
+
+def upsert_match_result(
+    conn: sqlite3.Connection,
+    match_id: int,
+    home_score: int | None,
+    away_score: int | None,
+) -> None:
+    """Sobrescribe el marcador de ``match_id`` con el valor más reciente
+    (decisión de Carlos, 13 oct: upsert real para resultados de partido).
+
+    Si esta fuente no trae marcador (``home_score``/``away_score`` ambos
+    ``None`` — ej. ESPN en la integración actual, solo calendario) no
+    toca nada: no debe "des-jugar" un partido que otra fuente ya marcó
+    como jugado. No hace ``commit()`` (lo hace el caller).
+    """
+    if home_score is None and away_score is None:
+        return
+    conn.execute(
+        "UPDATE matches SET home_score = ?, away_score = ?, status = 'played' WHERE match_id = ?",
+        (home_score, away_score, match_id),
+    )
+
+
 def load_matches(
     conn: sqlite3.Connection,
     team_aliases: dict,
     raw_dir: Path = DEFAULT_RAW_DIR,
 ) -> dict[str, int]:
-    """Resuelve/crea ``matches`` desde el CSV más reciente de cada fuente
-    disponible en ``raw_dir``. Devuelve cuántas filas se procesaron por
-    fuente. Requiere ``load_leagues``/``load_seasons`` ya corridos.
+    """Resuelve/crea ``matches`` y sobrescribe su marcador (upsert real,
+    ver ``upsert_match_result``) desde el CSV más reciente de cada
+    fuente disponible en ``raw_dir``. Devuelve cuántas filas se
+    procesaron por fuente. Requiere ``load_leagues``/``load_seasons``
+    ya corridos.
     """
     procesados: dict[str, int] = {}
     for source, spec in _MATCH_CSV_SPEC.items():
@@ -342,7 +422,7 @@ def load_matches(
         df = pd.read_csv(path)
         count = 0
         for _, row in df.iterrows():
-            resolve_or_create_match(
+            match_id = resolve_or_create_match(
                 conn,
                 team_aliases,
                 league_code=row["league"],
@@ -356,8 +436,99 @@ def load_matches(
                 home_team_source_id=_optional_str(row, spec["home_team_id_col"]),
                 away_team_source_id=_optional_str(row, spec["away_team_id_col"]),
             )
+            upsert_match_result(
+                conn,
+                match_id,
+                _optional_int(row, spec["home_score_col"]),
+                _optional_int(row, spec["away_score_col"]),
+            )
             count += 1
         conn.commit()
         procesados[source] = count
         logger.info("load_matches: %d partidos de %s procesados desde %s", count, source, path)
     return procesados
+
+
+def _parse_1x2_odds(row: pd.Series) -> list[dict]:
+    """Extrae cuotas del mercado 1x2 (pre-cierre y cierre) de una fila de
+    ``match_history`` — único mercado implementado por ahora, alcance
+    reducido a propósito: ``docs/odds_columns_map.md`` (tarea 1.4) ya
+    documentó que over/under 2.5 y hándicap asiático existen pero con un
+    esquema de columnas todavía más variable; quedan para una iteración
+    futura, no perdidos, no silenciosamente ignorados.
+
+    Solo genera una fila por casa de apuestas que efectivamente tenga
+    columnas en este ``DataFrame`` y al menos un valor no nulo — no
+    asume que las ~24 casas conocidas están todas presentes (el esquema
+    cambia entre temporadas, ver el mismo doc).
+    """
+    filas = []
+    for prefix in _1X2_BOOKMAKER_PREFIXES:
+        for is_closing, cols in ((0, (f"{prefix}h", f"{prefix}d", f"{prefix}a")),
+                                  (1, (f"{prefix}ch", f"{prefix}cd", f"{prefix}ca"))):
+            col_h, col_d, col_a = cols
+            if not {col_h, col_d, col_a} <= set(row.index):
+                continue
+            h, d, a = row[col_h], row[col_d], row[col_a]
+            if pd.isna(h) and pd.isna(d) and pd.isna(a):
+                continue
+            filas.append({
+                "bookmaker": prefix,
+                "is_closing": is_closing,
+                "home_value": float(h) if pd.notna(h) else None,
+                "draw_value": float(d) if pd.notna(d) else None,
+                "away_value": float(a) if pd.notna(a) else None,
+            })
+    return filas
+
+
+def load_odds_1x2(conn: sqlite3.Connection, raw_dir: Path = DEFAULT_RAW_DIR) -> int:
+    """Carga cuotas del mercado 1x2 desde ``match_history/match_history_*.csv``.
+
+    Histórico completo (decisión de Carlos, 13 oct): cada corrida es una
+    fila nueva por ``(match, bookmaker, is_closing)``, nunca se
+    sobreescribe — ``captured_at`` es el timestamp de esta corrida de
+    extracción (``_timestamp_from_filename``), por eso recargar el
+    mismo CSV sí es idempotente (``INSERT OR IGNORE`` con la misma
+    llave completa) pero una corrida distinta sí queda registrada aparte.
+
+    Requiere que ``load_matches`` ya haya corrido con
+    ``source='match_history'`` (usa ``match_source_ids`` para resolver
+    el ``match_id``, no vuelve a resolver equipos).
+    """
+    path = _latest_csv(raw_dir / "match_history", "match_history")
+    if path is None:
+        logger.warning("load_odds_1x2: no hay CSV de match_history en %s", raw_dir)
+        return 0
+    captured_at = _timestamp_from_filename(path)
+    df = pd.read_csv(path)
+    count = 0
+    for _, row in df.iterrows():
+        match_row = conn.execute(
+            "SELECT match_id FROM match_source_ids WHERE source = 'match_history' AND source_game_key = ?",
+            (row["game"],),
+        ).fetchone()
+        if match_row is None:
+            logger.warning(
+                "load_odds_1x2: %r no está en match_source_ids — correr load_matches primero",
+                row["game"],
+            )
+            continue
+        match_id = match_row[0]
+        for cuota in _parse_1x2_odds(row):
+            conn.execute(
+                "INSERT OR IGNORE INTO odds "
+                "(match_id, bookmaker, market, is_closing, line, home_value, draw_value, away_value, captured_at) "
+                "VALUES (?, ?, '1x2', ?, 0, ?, ?, ?, ?)",
+                (
+                    match_id, cuota["bookmaker"], cuota["is_closing"],
+                    cuota["home_value"], cuota["draw_value"], cuota["away_value"], captured_at,
+                ),
+            )
+            count += 1
+    conn.commit()
+    logger.info(
+        "load_odds_1x2: %d filas de cuotas 1x2 procesadas desde %s (captured_at=%s)",
+        count, path, captured_at,
+    )
+    return count

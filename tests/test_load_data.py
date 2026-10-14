@@ -9,21 +9,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from futbol.db.database import init_db, get_connection
 from futbol.db.load_data import (
     _find_existing_match,
+    _parse_1x2_odds,
+    _timestamp_from_filename,
     load_leagues,
     load_matches,
+    load_odds_1x2,
     load_seasons,
     load_team_aliases,
     resolve_or_create_match,
     resolve_team,
+    upsert_match_result,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REPO_SCHEMA_PATH = REPO_ROOT / "db" / "schema_v1.sql"
+REPO_SCHEMA_PATH = REPO_ROOT / "db" / "schema_v2.sql"
 REPO_TEAM_ALIASES_PATH = REPO_ROOT / "config" / "team_aliases.json"
 
 _TEST_ALIASES = {
@@ -176,7 +181,7 @@ def test_resolve_or_create_match_crea_nuevo_partido(conn):
     fila = conn.execute(
         "SELECT home_score, away_score, status FROM matches WHERE match_id = ?", (match_id,)
     ).fetchone()
-    assert fila == (None, None, "scheduled")  # tarea 2.3 no escribe marcador todavía
+    assert fila == (None, None, "scheduled")  # esta fuente no traía marcador en el llamado
 
 
 def test_resolve_or_create_match_misma_fuente_segunda_vez_reutiliza(conn):
@@ -334,3 +339,177 @@ def test_load_matches_segunda_corrida_es_idempotente(conn, raw_dir_con_4_fuentes
     assert conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM match_source_ids").fetchone()[0] == 4
     assert conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# upsert_match_result
+# ---------------------------------------------------------------------------
+
+def test_upsert_match_result_escribe_marcador_y_marca_jugado(conn):
+    season_id = _season_id(conn)
+    home_id = resolve_team(conn, _TEST_ALIASES, "TEST-League", "sofascore", "Team A")
+    away_id = resolve_team(conn, _TEST_ALIASES, "TEST-League", "sofascore", "Team B")
+    cur = conn.execute(
+        "INSERT INTO matches (season_id, home_team_id, away_team_id, match_date) "
+        "VALUES (?, ?, ?, '2024-08-16 19:00:00')",
+        (season_id, home_id, away_id),
+    )
+    match_id = cur.lastrowid
+
+    upsert_match_result(conn, match_id, 2, 1)
+    conn.commit()
+
+    fila = conn.execute(
+        "SELECT home_score, away_score, status FROM matches WHERE match_id = ?", (match_id,)
+    ).fetchone()
+    assert fila == (2, 1, "played")
+
+
+def test_upsert_match_result_sin_marcador_no_toca_nada(conn):
+    season_id = _season_id(conn)
+    home_id = resolve_team(conn, _TEST_ALIASES, "TEST-League", "sofascore", "Team A")
+    away_id = resolve_team(conn, _TEST_ALIASES, "TEST-League", "sofascore", "Team B")
+    cur = conn.execute(
+        "INSERT INTO matches (season_id, home_team_id, away_team_id, match_date) "
+        "VALUES (?, ?, ?, '2024-08-16 19:00:00')",
+        (season_id, home_id, away_id),
+    )
+    match_id = cur.lastrowid
+    upsert_match_result(conn, match_id, 2, 1)  # una fuente SÍ trae marcador
+    conn.commit()
+
+    upsert_match_result(conn, match_id, None, None)  # otra fuente (ej. ESPN) no trae
+    conn.commit()
+
+    fila = conn.execute(
+        "SELECT home_score, away_score, status FROM matches WHERE match_id = ?", (match_id,)
+    ).fetchone()
+    assert fila == (2, 1, "played")  # no se "des-juega" el partido
+
+
+def test_upsert_match_result_sobrescribe_con_el_valor_mas_reciente(conn):
+    season_id = _season_id(conn)
+    home_id = resolve_team(conn, _TEST_ALIASES, "TEST-League", "sofascore", "Team A")
+    away_id = resolve_team(conn, _TEST_ALIASES, "TEST-League", "sofascore", "Team B")
+    cur = conn.execute(
+        "INSERT INTO matches (season_id, home_team_id, away_team_id, match_date) "
+        "VALUES (?, ?, ?, '2024-08-16 19:00:00')",
+        (season_id, home_id, away_id),
+    )
+    match_id = cur.lastrowid
+
+    upsert_match_result(conn, match_id, 1, 1)  # marcador provisional/erróneo
+    upsert_match_result(conn, match_id, 2, 1)  # corrección posterior
+    conn.commit()
+
+    fila = conn.execute(
+        "SELECT home_score, away_score FROM matches WHERE match_id = ?", (match_id,)
+    ).fetchone()
+    assert fila == (2, 1)  # upsert real: queda el más reciente, no el primero
+
+
+# ---------------------------------------------------------------------------
+# _timestamp_from_filename
+# ---------------------------------------------------------------------------
+
+def test_timestamp_from_filename_extrae_fecha_de_la_corrida():
+    resultado = _timestamp_from_filename(Path("match_history_20260808_201736.csv"))
+    assert resultado == "2026-08-08 20:17:36"
+
+
+def test_timestamp_from_filename_formato_invalido_lanza_valueerror():
+    with pytest.raises(ValueError, match="no tiene el formato"):
+        _timestamp_from_filename(Path("archivo_sin_timestamp.csv"))
+
+
+# ---------------------------------------------------------------------------
+# _parse_1x2_odds / load_odds_1x2
+# ---------------------------------------------------------------------------
+
+def test_parse_1x2_odds_extrae_pre_cierre_y_cierre():
+    row = pd.Series({
+        "b365h": 1.6, "b365d": 4.2, "b365a": 5.25,
+        "b365ch": 1.67, "b365cd": 4.1, "b365ca": 5.0,
+        "columna_no_relacionada": "x",
+    })
+
+    cuotas = _parse_1x2_odds(row)
+
+    assert {"bookmaker": "b365", "is_closing": 0, "home_value": 1.6, "draw_value": 4.2, "away_value": 5.25} in cuotas
+    assert {"bookmaker": "b365", "is_closing": 1, "home_value": 1.67, "draw_value": 4.1, "away_value": 5.0} in cuotas
+    assert len(cuotas) == 2  # solo b365, ninguna otra casa tiene columnas en esta fila
+
+
+def test_parse_1x2_odds_omite_casa_totalmente_vacia():
+    row = pd.Series({"b365h": None, "b365d": None, "b365a": None})
+
+    assert _parse_1x2_odds(row) == []
+
+
+@pytest.fixture
+def raw_dir_con_marcador_y_cuotas(tmp_path: Path) -> Path:
+    raw_dir = tmp_path / "raw"
+    (raw_dir / "sofascore").mkdir(parents=True)
+    (raw_dir / "match_history").mkdir(parents=True)
+
+    (raw_dir / "sofascore" / "leagues_20260101_000000.csv").write_text(
+        "league,league_id,region\nTEST-League,1,TST\n", encoding="utf-8"
+    )
+    (raw_dir / "sofascore" / "seasons_20260101_000000.csv").write_text(
+        "league,season,league_id,season_id\nTEST-League,2024,1,1\n", encoding="utf-8"
+    )
+    (raw_dir / "sofascore" / "schedule_20260101_000000.csv").write_text(
+        "league,season,game,date,home_team,away_team,home_score,away_score,game_id\n"
+        "TEST-League,2024,2024-08-16 Team A-Team B,2024-08-16 19:00:00,Team A,Team B,2,1,999\n",
+        encoding="utf-8",
+    )
+    (raw_dir / "match_history" / "match_history_20260101_000000.csv").write_text(
+        "league,season,game,date,home_team,away_team,fthg,ftag,b365h,b365d,b365a\n"
+        "TEST-League,2024,2024-08-16 A-B,2024-08-16 20:00:00,A,B,2,1,1.6,4.2,5.25\n",
+        encoding="utf-8",
+    )
+    return raw_dir
+
+
+def test_load_matches_escribe_marcador_desde_sofascore_y_match_history(
+    conn, raw_dir_con_marcador_y_cuotas
+):
+    load_leagues(conn, raw_dir_con_marcador_y_cuotas)
+    load_seasons(conn, raw_dir_con_marcador_y_cuotas)
+
+    load_matches(conn, _TEST_ALIASES, raw_dir_con_marcador_y_cuotas)
+
+    fila = conn.execute("SELECT home_score, away_score, status FROM matches").fetchone()
+    assert fila == (2, 1, "played")
+
+
+def test_load_odds_1x2_guarda_historico_y_es_idempotente_por_corrida(
+    conn, raw_dir_con_marcador_y_cuotas
+):
+    load_leagues(conn, raw_dir_con_marcador_y_cuotas)
+    load_seasons(conn, raw_dir_con_marcador_y_cuotas)
+    load_matches(conn, _TEST_ALIASES, raw_dir_con_marcador_y_cuotas)
+
+    n_1 = load_odds_1x2(conn, raw_dir_con_marcador_y_cuotas)
+    assert n_1 == 1  # un solo bookmaker (b365) con datos en el CSV de prueba
+    assert conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0] == 1
+
+    # recargar la MISMA corrida (mismo captured_at) no duplica
+    n_2 = load_odds_1x2(conn, raw_dir_con_marcador_y_cuotas)
+    assert n_2 == 1
+    assert conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0] == 1
+
+    # una corrida NUEVA (otro timestamp de archivo) sí queda como fila aparte
+    nueva = raw_dir_con_marcador_y_cuotas / "match_history" / "match_history_20260215_120000.csv"
+    nueva.write_text(
+        (raw_dir_con_marcador_y_cuotas / "match_history" / "match_history_20260101_000000.csv")
+        .read_text(encoding="utf-8")
+        .replace("1.6,4.2,5.25", "1.7,4.0,5.1"),  # la cuota se movió
+        encoding="utf-8",
+    )
+    n_3 = load_odds_1x2(conn, raw_dir_con_marcador_y_cuotas)
+    assert n_3 == 1
+    assert conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0] == 2  # histórico, no se pisó
+
+    valores = {r[0] for r in conn.execute("SELECT home_value FROM odds ORDER BY captured_at")}
+    assert valores == {1.6, 1.7}
