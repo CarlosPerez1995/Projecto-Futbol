@@ -1,0 +1,94 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+
+# Bytecode / caches de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+
+# Testing / cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Tipo checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Entornos / variables
+.env
+.env.local
+*.env
+.envrc
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# Bloqueos temporales de LibreOffice / Office
+.~lock.*#
+.~*.xlsx#
+.~*.xlsx.#
+
+# Datos generados (carpeta de salida del proyecto)
+data/
+*.csv
+*.xlsx
+!Planificacion/*.xlsx
+!Planificacion/*.png
+
+# Archivos de credenciales / secretos
+*.key
+*.pem
+secrets.json
+config.ini
+
+# Logs
+*.log
+logs/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
