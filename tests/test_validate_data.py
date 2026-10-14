@@ -22,7 +22,7 @@ from futbol.db.validate_data import (
     run_validation,
 )
 
-REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v2.sql"
+REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v3.sql"
 
 
 @pytest.fixture

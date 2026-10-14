@@ -1,10 +1,10 @@
 """Conexión y creación de la base de datos SQLite (tarea 2.2, Fase 2).
 
-Aplica ``db/schema_v2.sql`` (ver ese archivo para el diseño, sus
-divergencias respecto al plan original y por qué es v2 y no v1 — cambio
-de alcance de ``odds`` a pedido de Carlos, 13 oct) sobre
-``data/database/futbol.db``. ``sqlite3`` es parte de la stdlib, no hay
-dependencia nueva que instalar (ver AGENTS.md).
+Aplica ``db/schema_v3.sql`` (ver ese archivo para el diseño y por qué
+es v3 y no v1/v2 — histórico completo de ``odds`` y ``fixtures``, a
+pedido de Carlos, 13-14 oct) sobre ``data/database/futbol.db``.
+``sqlite3`` es parte de la stdlib, no hay dependencia nueva que
+instalar (ver AGENTS.md).
 """
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path("data/database/futbol.db")
-DEFAULT_SCHEMA_PATH = Path("db/schema_v2.sql")
+DEFAULT_SCHEMA_PATH = Path("db/schema_v3.sql")
 
-# Tablas que crea schema_v2.sql (mismo set que v1, ver ese archivo) —
+# Tablas que crea schema_v3.sql (mismo set que v1, ver ese archivo) —
 # usadas para decidir si init_db() ya corrió antes (idempotencia) sin
 # depender de IF NOT EXISTS en el .sql versionado.
 _EXPECTED_TABLES = {

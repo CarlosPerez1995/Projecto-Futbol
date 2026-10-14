@@ -12,20 +12,21 @@ Semántica de carga por tabla, decidida por Carlos el 13 oct 2026:
   de esta decisión (no hay fila previa con la que entrar en conflicto),
   por eso esa parte ya se había implementado antes de tener la
   confirmación.
-- ``odds`` (cuotas): NO se sobrescribe — se guarda el histórico
-  completo (cada corrida de extracción es una fila nueva), porque
-  Carlos lo quiere como insumo para modelos de fases posteriores
-  (movimiento de cuota antes del partido). Esto cambió el esquema:
-  ``db/schema_v2.sql`` agrega ``captured_at`` a la tabla ``odds`` (ver
-  ese archivo). Implementado solo para el mercado 1x2 por ahora
-  (``load_odds_1x2``) — over/under y hándicap asiático quedan fuera de
-  alcance de esta iteración, no perdidos, ver docstring de esa función.
-- ``fixtures`` (tabla de posiciones): todavía sin confirmar con Carlos
-  si necesita histórico (como odds) o le alcanza con upsert real (como
-  matches) — no implementado, pendiente de esa respuesta.
+- ``odds`` (cuotas) y ``fixtures`` (tabla de posiciones): NO se
+  sobrescriben — ambas guardan el histórico completo (cada corrida de
+  extracción es una fila nueva), porque Carlos las quiere como insumo
+  para modelos de fases posteriores (movimiento de cuota antes del
+  partido; posición del equipo antes de un partido dado). Esto cambió
+  el esquema dos veces: ``db/schema_v2.sql`` agrega ``captured_at`` a
+  ``odds`` (13 oct) y ``db/schema_v3.sql`` lo mismo a ``fixtures``
+  (14 oct) — ver esos archivos. ``odds`` implementado solo para el
+  mercado 1x2 por ahora (``load_odds_1x2``) — over/under y hándicap
+  asiático quedan fuera de alcance de esta iteración, no perdidos, ver
+  docstring de esa función. ``fixtures`` implementado completo
+  (``load_fixtures``), es una sola tabla sin mercados que elegir.
 
 Resuelve ``leagues``/``seasons`` (clave natural común a las 4 fuentes,
-ver ``db/schema_v2.sql``) y ``teams``/``matches`` (catálogos canónicos
+ver ``db/schema_v3.sql``) y ``teams``/``matches`` (catálogos canónicos
 con tabla de mapeo por fuente, ``team_source_ids``/``match_source_ids``).
 
 La resolución de equipos usa ``config/team_aliases.json``, curado a
@@ -529,6 +530,70 @@ def load_odds_1x2(conn: sqlite3.Connection, raw_dir: Path = DEFAULT_RAW_DIR) -> 
     conn.commit()
     logger.info(
         "load_odds_1x2: %d filas de cuotas 1x2 procesadas desde %s (captured_at=%s)",
+        count, path, captured_at,
+    )
+    return count
+
+
+def load_fixtures(
+    conn: sqlite3.Connection,
+    team_aliases: dict,
+    raw_dir: Path = DEFAULT_RAW_DIR,
+) -> int:
+    """Carga la tabla de posiciones desde ``sofascore/standings_*.csv``.
+
+    Histórico completo (decisión de Carlos, F5, 14 oct): cada corrida es
+    una fila nueva por ``(season, team)``, nunca se sobreescribe — mismo
+    patrón que ``load_odds_1x2`` (``captured_at`` = timestamp de la
+    corrida de extracción, no de inserción).
+
+    ``standings_*.csv`` NO trae una columna de posición explícita —
+    viene ordenado por posición real dentro de cada ``(league, season)``
+    tal como lo devuelve ``soccerdata.Sofascore.read_league_table()``
+    (verificado contra los datos reales: Liverpool FC con más puntos
+    aparece antes que Arsenal con menos, dentro de la misma
+    liga/temporada). La posición se calcula acá como el número de fila
+    dentro de ese grupo, asumiendo que el CSV preserva ese orden — no se
+    reordena por puntos/diferencia de gol con un criterio propio, para
+    no arriesgar un desempate distinto al que ya aplicó la fuente.
+
+    Requiere ``load_leagues``/``load_seasons`` ya corridos.
+    """
+    path = _latest_csv(raw_dir / "sofascore", "standings")
+    if path is None:
+        logger.warning("load_fixtures: no hay CSV de standings en %s/sofascore", raw_dir)
+        return 0
+    captured_at = _timestamp_from_filename(path)
+    df = pd.read_csv(path)
+    count = 0
+    posiciones: dict[tuple, int] = {}
+    for _, row in df.iterrows():
+        liga, temporada = row["league"], str(row["season"])
+        clave_grupo = (liga, temporada)
+        posiciones[clave_grupo] = posiciones.get(clave_grupo, 0) + 1
+        position = posiciones[clave_grupo]
+
+        season_id = _get_season_id(conn, liga, temporada)
+        team_id = resolve_team(conn, team_aliases, liga, "sofascore", row["team"])
+
+        conn.execute(
+            "INSERT OR IGNORE INTO fixtures "
+            "(season_id, team_id, position, played, won, drawn, lost, "
+            "goals_for, goals_against, goal_difference, points, captured_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                season_id, team_id, position,
+                _optional_int(row, "mp"), _optional_int(row, "w"),
+                _optional_int(row, "d"), _optional_int(row, "l"),
+                _optional_int(row, "gf"), _optional_int(row, "ga"),
+                _optional_int(row, "gd"), _optional_int(row, "pts"),
+                captured_at,
+            ),
+        )
+        count += 1
+    conn.commit()
+    logger.info(
+        "load_fixtures: %d filas de posiciones procesadas desde %s (captured_at=%s)",
         count, path, captured_at,
     )
     return count

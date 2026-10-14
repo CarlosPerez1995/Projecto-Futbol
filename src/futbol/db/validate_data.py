@@ -1,17 +1,20 @@
 """Script de validación de datos (tarea 2.4, Fase 2).
 
 Corre contra el estado actual de la BD (requiere que
-``load_leagues``/``load_seasons``/``load_matches``/``load_odds_1x2`` ya
-hayan corrido — no vuelve a leer ``data/raw/``) las 5 validaciones del
-plan arquitectónico: % de nulos por columna, duplicados en ``matches``,
-rango lógico de fecha, scores no negativos e integridad referencial.
-Genera ``data/reports/validation_<fecha>.xlsx`` con hoja ``resumen`` y
-hoja ``errores`` — ``openpyxl`` ya es dependencia del proyecto, no hay
-que instalar nada nuevo (ver AGENTS.md).
+``load_leagues``/``load_seasons``/``load_matches``/``load_odds_1x2``/
+``load_fixtures`` ya hayan corrido — no vuelve a leer ``data/raw/``)
+las 5 validaciones del plan arquitectónico: % de nulos por columna,
+duplicados en ``matches``, rango lógico de fecha, scores no negativos
+e integridad referencial. Genera
+``data/reports/validation_<fecha>.xlsx`` con hoja ``resumen`` y hoja
+``errores`` — ``openpyxl`` ya es dependencia del proyecto, no hay que
+instalar nada nuevo (ver AGENTS.md).
 
-No valida ``fixtures``: todavía no tiene loader (pendiente de que
-Carlos confirme su semántica de carga, ver ``load_data.py``) y correr
-las validaciones contra una tabla vacía no aporta nada.
+Los checks de duplicados/fecha/score son específicos de ``matches``
+(el plan arquitectónico no pide equivalentes para ``fixtures``/``odds``,
+que ya tienen su propia protección contra duplicados vía ``UNIQUE`` con
+``captured_at`` — ver ``db/schema_v3.sql``); el de nulos sí corre sobre
+``fixtures`` porque ya tiene loader (``load_fixtures``, 14 oct).
 """
 from __future__ import annotations
 
@@ -23,9 +26,8 @@ import openpyxl
 
 DEFAULT_REPORT_DIR = Path("data/reports")
 
-# Tablas sobre las que se mide % de nulos por columna. `fixtures` se excluye
-# a propósito (ver docstring del módulo: sin loader todavía).
-_TABLAS_PARA_NULOS = ("matches", "odds", "teams")
+# Tablas sobre las que se mide % de nulos por columna.
+_TABLAS_PARA_NULOS = ("matches", "odds", "teams", "fixtures")
 
 
 def _null_percentages(conn: sqlite3.Connection, table: str) -> dict[str, float]:

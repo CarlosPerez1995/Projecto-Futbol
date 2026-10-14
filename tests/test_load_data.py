@@ -17,6 +17,7 @@ from futbol.db.load_data import (
     _find_existing_match,
     _parse_1x2_odds,
     _timestamp_from_filename,
+    load_fixtures,
     load_leagues,
     load_matches,
     load_odds_1x2,
@@ -28,7 +29,7 @@ from futbol.db.load_data import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REPO_SCHEMA_PATH = REPO_ROOT / "db" / "schema_v2.sql"
+REPO_SCHEMA_PATH = REPO_ROOT / "db" / "schema_v3.sql"
 REPO_TEAM_ALIASES_PATH = REPO_ROOT / "config" / "team_aliases.json"
 
 _TEST_ALIASES = {
@@ -513,3 +514,73 @@ def test_load_odds_1x2_guarda_historico_y_es_idempotente_por_corrida(
 
     valores = {r[0] for r in conn.execute("SELECT home_value FROM odds ORDER BY captured_at")}
     assert valores == {1.6, 1.7}
+
+
+# ---------------------------------------------------------------------------
+# load_fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def raw_dir_con_standings(tmp_path: Path) -> Path:
+    raw_dir = tmp_path / "raw"
+    (raw_dir / "sofascore").mkdir(parents=True)
+
+    (raw_dir / "sofascore" / "leagues_20260101_000000.csv").write_text(
+        "league,league_id,region\nTEST-League,1,TST\n", encoding="utf-8"
+    )
+    (raw_dir / "sofascore" / "seasons_20260101_000000.csv").write_text(
+        "league,season,league_id,season_id\nTEST-League,2024,1,1\n", encoding="utf-8"
+    )
+    (raw_dir / "sofascore" / "standings_20260101_000000.csv").write_text(
+        "league,season,team,mp,w,d,l,gf,ga,gd,pts\n"
+        "TEST-League,2024,Team A,10,8,1,1,20,5,15,25\n"
+        "TEST-League,2024,Team B,10,5,2,3,15,12,3,17\n",
+        encoding="utf-8",
+    )
+    return raw_dir
+
+
+def test_load_fixtures_calcula_posicion_por_orden_de_fila(conn, raw_dir_con_standings):
+    load_leagues(conn, raw_dir_con_standings)
+    load_seasons(conn, raw_dir_con_standings)
+
+    n = load_fixtures(conn, _TEST_ALIASES, raw_dir_con_standings)
+
+    assert n == 2
+    filas = conn.execute(
+        """
+        SELECT t.canonical_name, f.position, f.points
+        FROM fixtures f JOIN teams t ON t.team_id = f.team_id
+        ORDER BY f.position
+        """
+    ).fetchall()
+    assert filas == [("Team A", 1, 25), ("Team B", 2, 17)]
+
+
+def test_load_fixtures_guarda_historico_y_es_idempotente_por_corrida(conn, raw_dir_con_standings):
+    load_leagues(conn, raw_dir_con_standings)
+    load_seasons(conn, raw_dir_con_standings)
+    load_fixtures(conn, _TEST_ALIASES, raw_dir_con_standings)
+
+    # recargar la MISMA corrida no duplica
+    load_fixtures(conn, _TEST_ALIASES, raw_dir_con_standings)
+    assert conn.execute("SELECT COUNT(*) FROM fixtures").fetchone()[0] == 2
+
+    # una corrida NUEVA (otro timestamp) con datos distintos sí queda aparte
+    nueva = raw_dir_con_standings / "sofascore" / "standings_20260215_120000.csv"
+    nueva.write_text(
+        "league,season,team,mp,w,d,l,gf,ga,gd,pts\n"
+        "TEST-League,2024,Team A,11,9,1,1,22,5,17,28\n"
+        "TEST-League,2024,Team B,11,5,2,4,15,14,1,17\n",
+        encoding="utf-8",
+    )
+    load_fixtures(conn, _TEST_ALIASES, raw_dir_con_standings)
+
+    assert conn.execute("SELECT COUNT(*) FROM fixtures").fetchone()[0] == 4
+    puntos_team_a = {
+        r[0] for r in conn.execute(
+            "SELECT f.points FROM fixtures f JOIN teams t ON t.team_id = f.team_id "
+            "WHERE t.canonical_name = 'Team A'"
+        )
+    }
+    assert puntos_team_a == {25, 28}  # las dos capturas, no se pisó la vieja
