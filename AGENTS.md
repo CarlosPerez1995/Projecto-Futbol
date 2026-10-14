@@ -14,7 +14,9 @@ catálogos, identidad de equipos/partidos, upsert real de marcador y
 cuotas 1x2 con histórico, todo en `src/futbol/db/load_data.py`; falta
 `fixtures`, bloqueado por una pregunta pendiente a Carlos sobre si
 necesita histórico o upsert real; over/under y hándicap asiático de
-`odds` deferidos a propósito, no implementados; 2.4 pendiente).
+`odds` deferidos a propósito, no implementados. **2.4 hecha**:
+`src/futbol/db/validate_data.py`, reporte en
+`data/reports/validation_<fecha>.xlsx`).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -134,6 +136,13 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     inserción — ver `db/schema_v2.sql`). Over/under y hándicap asiático
     de `odds`, y la tabla `fixtures`, no implementados todavía (ver
     "Estado actual" arriba).
+  - `src/futbol/db/validate_data.py` — validación de datos (tarea 2.4):
+    `run_validation` genera `data/reports/validation_<fecha>.xlsx` (hojas
+    `resumen`/`errores`) con 5 checks contra el estado actual de la BD:
+    % de nulos por columna (`matches`/`odds`/`teams`), duplicados en
+    `matches`, fechas fuera de rango (1920-2100), scores negativos e
+    integridad referencial (`PRAGMA foreign_key_check`). No valida
+    `fixtures` (sin loader todavía).
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
