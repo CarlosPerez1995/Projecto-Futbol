@@ -1,0 +1,42 @@
+Mapa de columnas de data/processed/features_matches.csv (tarea 3.1)
+====================================================================
+
+Generado por src/futbol/features/matches.py::compute_match_features().
+Una fila por partido con marcador conocido (status='played' en la
+tabla `matches`). Un partido todavía no jugado no aparece acá.
+
+Columnas de identificación (vienen de la BD, sin cálculo):
+  match_id      - id interno del partido (BD, tabla matches)
+  league_code   - código de liga de soccerdata, ej. "ENG-Premier League"
+  season_code   - código de temporada de soccerdata, ej. "2425"
+  match_date    - fecha/hora del partido (ver AGENTS.md sobre el bug de
+                  huso horario de MatchHistory corregido en Fase 2 — acá
+                  viene de la fuente que creó el registro primero, no
+                  normalizado a un huso en particular)
+  home_team     - nombre canónico del equipo local (tabla teams)
+  away_team     - nombre canónico del equipo visitante (tabla teams)
+  home_score    - goles del equipo local
+  away_score    - goles del equipo visitante
+
+Columnas calculadas:
+  total_goals      = home_score + away_score
+  goal_difference  = home_score - away_score (positivo = ganó el local)
+  result_1x2       = "H" (gana local) / "D" (empate) / "A" (gana visitante)
+  over_1_5         = total_goals > 1.5
+  over_2_5         = total_goals > 2.5
+  over_3_5         = total_goals > 3.5
+  btts             = home_score > 0 AND away_score > 0
+                      ("both teams to score")
+
+Columnas pendientes de fuente (no calculadas todavía):
+  home_xg, away_xg - gol esperado (Expected Goals). Understat SÍ trae
+                      este dato (home_xg/away_xg en
+                      understat_team_match_stats_*.csv), pero en Fase 2
+                      Understat solo se usó para resolver identidad de
+                      equipos/partidos (home_team_id/away_team_id en
+                      load_data.py), no se cargaron sus métricas de xG
+                      a la BD. Por eso estas dos columnas quedan vacías
+                      (NA) por ahora — no es un dato perdido, es una
+                      decisión de alcance para esta tarea. Cargar xG a
+                      la BD es trabajo pendiente (de Fase 2, no de esta
+                      tarea de Fase 3) antes de poder llenarlas.

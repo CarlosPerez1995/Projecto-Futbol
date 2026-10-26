@@ -15,7 +15,12 @@ no upsert — decisión de Carlos), conexión (`database.py`), loader
 marcador, histórico de cuotas 1x2 y de la tabla de posiciones) y validación
 (`validate_data.py`). Pendiente dentro de alcance reducido a propósito, no
 bloqueante: mercados over/under y hándicap asiático de `odds` (solo 1x2
-implementado). Siguiente fase natural: Fase 3 (features), sin empezar.
+implementado). **Fase 3 (features) arrancada el 26 oct 2026** (autorizada
+por Carlos): tarea 3.1 (features por partido, `src/futbol/features/matches.py`)
+hecha; 3.2 (features por equipo, sin data leakage) y 3.3 (dataset
+consolidado) pendientes. Informe narrativo para Carlos (no técnico) en
+`INFORME_PROYECTO.md`, raíz del repo — mantenerlo al día en cada fase
+cerrada, no solo este archivo.
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -143,6 +148,14 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     % de nulos por columna (`matches`/`odds`/`teams`/`fixtures`),
     duplicados en `matches`, fechas fuera de rango (1920-2100), scores
     negativos e integridad referencial (`PRAGMA foreign_key_check`).
+  - `src/futbol/features/matches.py` — features por partido (tarea 3.1,
+    Fase 3): `compute_match_features` lee `matches` ya cargados (solo
+    `status='played'`) y calcula `total_goals`/`goal_difference`/
+    `result_1x2`/`over_1_5`/`over_2_5`/`over_3_5`/`btts`; `home_xg`/
+    `away_xg` quedan `NA` ("pendiente de fuente": Understat trae xG,
+    pero Fase 2 no lo cargó a la BD, solo usó Understat para identidad
+    de equipos/partidos — ver `docs/features_map.txt`).
+    `save_features_matches` escribe `data/processed/features_matches.csv`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
@@ -164,6 +177,8 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   `data/raw/match_history/`, `data/raw/espn/`, `data/raw/understat/`)
 - `data/cache/soccerdata/` — caché de `soccerdata` (tarea 1.6.3), no
   versionada.
+- `data/processed/features_matches.csv` — salida de la tarea 3.1 (Fase 3),
+  no versionada (se regenera desde la BD).
 - `db/schema_v1.sql`, `db/schema_v2.sql` — versiones superadas, **no
   editar, quedan como historial** (versionado: decisión ya tomada en v1).
   v1: diseño original (tarea 2.1) — catálogos `leagues`/`seasons` por clave
