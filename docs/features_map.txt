@@ -1,0 +1,72 @@
+Mapa de columnas de data/processed/features_matches.csv (tarea 3.1)
+====================================================================
+
+Generado por src/futbol/features/matches.py::compute_match_features().
+Una fila por partido con marcador conocido (status='played' en la
+tabla `matches`). Un partido todavía no jugado no aparece acá.
+
+Columnas de identificación (vienen de la BD, sin cálculo):
+  match_id      - id interno del partido (BD, tabla matches)
+  league_code   - código de liga de soccerdata, ej. "ENG-Premier League"
+  season_code   - código de temporada de soccerdata, ej. "2425"
+  match_date    - fecha/hora del partido (ver AGENTS.md sobre el bug de
+                  huso horario de MatchHistory corregido en Fase 2 — acá
+                  viene de la fuente que creó el registro primero, no
+                  normalizado a un huso en particular)
+  home_team     - nombre canónico del equipo local (tabla teams)
+  away_team     - nombre canónico del equipo visitante (tabla teams)
+  home_score    - goles del equipo local
+  away_score    - goles del equipo visitante
+
+Columnas calculadas:
+  total_goals      = home_score + away_score
+  goal_difference  = home_score - away_score (positivo = ganó el local)
+  result_1x2       = "H" (gana local) / "D" (empate) / "A" (gana visitante)
+  over_1_5         = total_goals > 1.5
+  over_2_5         = total_goals > 2.5
+  over_3_5         = total_goals > 3.5
+  btts             = home_score > 0 AND away_score > 0
+                      ("both teams to score")
+
+Columnas pendientes de fuente (no calculadas todavía):
+  home_xg, away_xg - gol esperado (Expected Goals). Understat SÍ trae
+                      este dato (home_xg/away_xg en
+                      understat_team_match_stats_*.csv), pero en Fase 2
+                      Understat solo se usó para resolver identidad de
+                      equipos/partidos (home_team_id/away_team_id en
+                      load_data.py), no se cargaron sus métricas de xG
+                      a la BD. Por eso estas dos columnas quedan vacías
+                      (NA) por ahora — no es un dato perdido, es una
+                      decisión de alcance para esta tarea. Cargar xG a
+                      la BD es trabajo pendiente (de Fase 2, no de esta
+                      tarea de Fase 3) antes de poder llenarlas.
+
+
+Columnas de forma por equipo (tarea 3.2) — mismo dataset, sufijo _home/_away
+=============================================================================
+
+Generado por src/futbol/features/teams.py::compute_team_features().
+Ventana: últimos 5 partidos del equipo (local o visitante, los que
+tenga). Regla de oro, verificada con tests (tests/test_features_teams.py):
+toda columna de esta sección usa SOLO partidos anteriores al que
+describe la fila — nunca el marcador del propio partido. El primer
+partido de un equipo en toda la BD no tiene historia y queda en blanco
+(NA) a propósito.
+
+  goals_scored_avg_last5_{home,away}    - promedio de goles a favor del
+                                           equipo en sus últimos 5 (o
+                                           menos) partidos anteriores
+  goals_conceded_avg_last5_{home,away}  - idem, goles en contra
+  form_points_avg_last5_{home,away}     - promedio de puntos (W=3, D=1,
+                                           L=0) en esos mismos partidos
+  clean_sheets_rate_last5_{home,away}   - proporción de esos partidos en
+                                           que el equipo no recibió goles
+  current_streak_length_{home,away}     - cuántos partidos consecutivos
+                                           (terminando en el partido
+                                           inmediatamente anterior) tuvo
+                                           el mismo resultado
+  current_streak_result_{home,away}     - "W"/"D"/"L": qué resultado es
+                                           el de esa racha
+  matches_played_before_{home,away}     - cuántos partidos previos tenía
+                                           el equipo (0 = su primer
+                                           partido en la BD, sin historia)
