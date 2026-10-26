@@ -1,6 +1,6 @@
 # Informe del proyecto — Fútbol (análisis deportivo)
 
-*Última actualización: 26 oct 2026. Pensado para leerse de corrido, sin
+*Última actualización: 26 oct 2026 (fase 3 completa). Pensado para leerse de corrido, sin
 jerga técnica innecesaria — para el detalle técnico está `AGENTS.md` y
 la carpeta `docs/`.*
 
@@ -170,20 +170,60 @@ columnas que cambia de temporada a temporada — se decidió dejarlos para
 una iteración futura en vez de arriesgar un diseño apresurado. Está
 documentado, no se perdió de vista.
 
+## Fase 3 — Construcción de features (26 oct 2026)
+
+Con la base de datos lista, el siguiente paso fue convertir esos datos
+crudos en las variables que un modelo predictivo puede usar. Se hizo
+en tres pasos, cada uno construido sobre el anterior:
+
+1. **Features del propio partido**: para cada partido ya jugado, cómo
+   terminó — total de goles, diferencia, quién ganó (o si fue empate),
+   si se pasó de determinados umbrales de goles (más de 1.5, 2.5 o 3.5
+   en total), y si ambos equipos marcaron. El dato de "gol esperado"
+   (xG) de Understat quedó pendiente a propósito — se tiene la fuente,
+   pero cargarla a la base de datos es trabajo que quedó fuera del
+   alcance de esta vuelta, documentado para no perderlo de vista.
+
+2. **Features de forma de cada equipo**: esta es la parte más delicada
+   de toda la fase, porque acá es muy fácil cometer un error sutil que
+   arruina un modelo sin que se note a simple vista — "data leakage",
+   que un modelo termine entrenándose viendo, sin querer, el resultado
+   que después tiene que adivinar. Para cada partido, se calculó cómo
+   venía cada equipo (goles que mete y recibe en promedio, puntos,
+   partidos sin recibir goles, racha actual) usando **únicamente sus
+   partidos anteriores a esa fecha**, nunca el partido en cuestión.
+   Esto no se dejó solo a la lógica del código: se armó un caso de
+   prueba calculado a mano (tres partidos, con un resultado 0-3 bien
+   llamativo) específicamente para confirmar que ese 0 y ese 3 nunca
+   se filtran hacia atrás en las features de "antes del partido".
+
+3. **Dataset final para modelar**: se juntó todo en un solo archivo,
+   separando con claridad qué columnas puede usar un modelo como
+   entrada (la forma de cada equipo, calculada antes del partido) y
+   cuáles son la respuesta que el modelo tiene que aprender a predecir
+   (el resultado real). Mezclar esas dos cosas sin esa separación
+   explícita es, de nuevo, la forma más común de terminar con un
+   modelo que "funciona" en las pruebas pero es inútil en la realidad.
+   Cada vez que se genera este archivo queda firmado con un hash, para
+   poder saber en el futuro con qué versión exacta de los datos se
+   entrenó cada modelo.
+
+Verificado contra los datos reales: 3.515 partidos, 31 columnas en
+total (6 de identificación, 14 de forma de los equipos, 11 de
+resultado real).
+
 ## Dónde está el proyecto hoy (26 oct 2026)
 
-Fase 2 completa. La base de datos tiene, con datos reales ya cargados:
-5 ligas, 10 temporadas, 110 equipos, miles de partidos con su marcador,
-decenas de miles de filas de cuotas históricas, y la tabla de
-posiciones histórica. Carlos acaba de autorizar arrancar la **Fase 3:
-construcción de features** — el paso que convierte estos datos crudos
-en las variables que un modelo predictivo puede usar (por ejemplo,
-cuántos goles promedia un equipo en sus últimos 5 partidos, su racha
-actual, si juega de local o visitante).
+Fases 0 a 3 completas. La base de datos tiene, con datos reales ya
+cargados: 5 ligas, 10 temporadas, 110 equipos, miles de partidos con su
+marcador, decenas de miles de filas de cuotas históricas, la tabla de
+posiciones histórica, y ya el dataset de features listo para empezar a
+probar modelos.
 
 ## Lo que viene después de fase 3
 
-Según el plan original: Fase 4 (modelos predictivos — estadísticos y de
-machine learning), Fase 5 (la capa que decide cuánto apostar y cuándo,
-con gestión de riesgo), y Fase 6 (que todo el proceso corra solo todos
-los días, sin intervención manual).
+Según el plan original: **Fase 4** (modelos predictivos — estadísticos
+y de machine learning; requiere aprobar la instalación de algunas
+librerías nuevas antes de arrancar), **Fase 5** (la capa que decide
+cuánto apostar y cuándo, con gestión de riesgo), y **Fase 6** (que todo
+el proceso corra solo todos los días, sin intervención manual).
