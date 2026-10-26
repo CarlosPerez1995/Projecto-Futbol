@@ -16,9 +16,10 @@ marcador, histórico de cuotas 1x2 y de la tabla de posiciones) y validación
 (`validate_data.py`). Pendiente dentro de alcance reducido a propósito, no
 bloqueante: mercados over/under y hándicap asiático de `odds` (solo 1x2
 implementado). **Fase 3 (features) arrancada el 26 oct 2026** (autorizada
-por Carlos): tarea 3.1 (features por partido, `src/futbol/features/matches.py`)
-hecha; 3.2 (features por equipo, sin data leakage) y 3.3 (dataset
-consolidado) pendientes. Informe narrativo para Carlos (no técnico) en
+por Carlos): 3.1 (features por partido, `src/futbol/features/matches.py`) y
+3.2 (features por equipo, `src/futbol/features/teams.py`, verificado sin
+data leakage con tests dedicados) hechas; 3.3 (dataset consolidado)
+pendiente. Informe narrativo para Carlos (no técnico) en
 `INFORME_PROYECTO.md`, raíz del repo — mantenerlo al día en cada fase
 cerrada, no solo este archivo.
 
@@ -156,6 +157,15 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     pero Fase 2 no lo cargó a la BD, solo usó Understat para identidad
     de equipos/partidos — ver `docs/features_map.txt`).
     `save_features_matches` escribe `data/processed/features_matches.csv`.
+  - `src/futbol/features/teams.py` — features de forma por equipo
+    (tarea 3.2, Fase 3): `compute_team_features` calcula, por equipo
+    local/visitante, promedios de goles/puntos/vallas invictas de sus
+    últimos 5 partidos y racha actual — **todo desplazado 1 posición
+    antes de agregar (`shift(1)` + `rolling`)** para que el partido en
+    curso nunca entre en su propio cálculo (sin data leakage,
+    verificado con un escenario de 3 partidos calculado a mano en
+    `tests/test_features_teams.py`). Ver `docs/features_map.txt` para
+    el detalle de cada columna `_home`/`_away`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

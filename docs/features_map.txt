@@ -40,3 +40,33 @@ Columnas pendientes de fuente (no calculadas todavía):
                       decisión de alcance para esta tarea. Cargar xG a
                       la BD es trabajo pendiente (de Fase 2, no de esta
                       tarea de Fase 3) antes de poder llenarlas.
+
+
+Columnas de forma por equipo (tarea 3.2) — mismo dataset, sufijo _home/_away
+=============================================================================
+
+Generado por src/futbol/features/teams.py::compute_team_features().
+Ventana: últimos 5 partidos del equipo (local o visitante, los que
+tenga). Regla de oro, verificada con tests (tests/test_features_teams.py):
+toda columna de esta sección usa SOLO partidos anteriores al que
+describe la fila — nunca el marcador del propio partido. El primer
+partido de un equipo en toda la BD no tiene historia y queda en blanco
+(NA) a propósito.
+
+  goals_scored_avg_last5_{home,away}    - promedio de goles a favor del
+                                           equipo en sus últimos 5 (o
+                                           menos) partidos anteriores
+  goals_conceded_avg_last5_{home,away}  - idem, goles en contra
+  form_points_avg_last5_{home,away}     - promedio de puntos (W=3, D=1,
+                                           L=0) en esos mismos partidos
+  clean_sheets_rate_last5_{home,away}   - proporción de esos partidos en
+                                           que el equipo no recibió goles
+  current_streak_length_{home,away}     - cuántos partidos consecutivos
+                                           (terminando en el partido
+                                           inmediatamente anterior) tuvo
+                                           el mismo resultado
+  current_streak_result_{home,away}     - "W"/"D"/"L": qué resultado es
+                                           el de esa racha
+  matches_played_before_{home,away}     - cuántos partidos previos tenía
+                                           el equipo (0 = su primer
+                                           partido en la BD, sin historia)
