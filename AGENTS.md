@@ -15,13 +15,16 @@ no upsert — decisión de Carlos), conexión (`database.py`), loader
 marcador, histórico de cuotas 1x2 y de la tabla de posiciones) y validación
 (`validate_data.py`). Pendiente dentro de alcance reducido a propósito, no
 bloqueante: mercados over/under y hándicap asiático de `odds` (solo 1x2
-implementado). **Fase 3 (features) arrancada el 26 oct 2026** (autorizada
-por Carlos): 3.1 (features por partido, `src/futbol/features/matches.py`) y
-3.2 (features por equipo, `src/futbol/features/teams.py`, verificado sin
-data leakage con tests dedicados) hechas; 3.3 (dataset consolidado)
-pendiente. Informe narrativo para Carlos (no técnico) en
-`INFORME_PROYECTO.md`, raíz del repo — mantenerlo al día en cada fase
-cerrada, no solo este archivo.
+implementado). **Fase 3 (features) completa (26 oct 2026)**, autorizada por
+Carlos: 3.1 (features por partido), 3.2 (features por equipo, sin data
+leakage verificado con tests dedicados) y 3.3 (dataset consolidado,
+`src/futbol/features/dataset.py` — separa explícitamente columnas
+predictoras de columnas objetivo, con `features_spec.md` versionado por
+hash). Siguiente fase natural: Fase 4 (modelos predictivos), sin empezar —
+requiere aprobar instalación de `scikit-learn`/`scipy`/`xgboost`/`joblib`
+antes de arrancar (regla 3 de AGENTS.md). Informe narrativo para Carlos
+(no técnico) en `INFORME_PROYECTO.md`, raíz del repo — mantenerlo al día
+en cada fase cerrada, no solo este archivo.
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -166,6 +169,15 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     verificado con un escenario de 3 partidos calculado a mano en
     `tests/test_features_teams.py`). Ver `docs/features_map.txt` para
     el detalle de cada columna `_home`/`_away`.
+  - `src/futbol/features/dataset.py` — dataset consolidado (tarea 3.3,
+    Fase 3): `build_model_dataset` une 3.1+3.2 por `match_id` y separa
+    columnas en `predictor_columns()` (features de equipo, lo que un
+    modelo puede usar de entrada) vs. `TARGET_COLUMNS` (resultado real
+    del partido — NUNCA como entrada, es lo que el modelo debe
+    predecir); `save_model_dataset` escribe
+    `data/processed/model_dataset.csv` + `features_spec.md` (fecha y
+    hash SHA-256 del CSV, para saber con qué versión exacta de
+    features se entrenó cada modelo más adelante).
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
@@ -189,6 +201,9 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   versionada.
 - `data/processed/features_matches.csv` — salida de la tarea 3.1 (Fase 3),
   no versionada (se regenera desde la BD).
+- `data/processed/model_dataset.csv`, `data/processed/features_spec.md` —
+  salida de la tarea 3.3 (Fase 3), no versionados (se regeneran desde la
+  BD; `features_spec.md` trae el hash SHA-256 del CSV generado).
 - `db/schema_v1.sql`, `db/schema_v2.sql` — versiones superadas, **no
   editar, quedan como historial** (versionado: decisión ya tomada en v1).
   v1: diseño original (tarea 2.1) — catálogos `leagues`/`seasons` por clave
