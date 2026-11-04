@@ -22,9 +22,12 @@ leakage verificado con tests dedicados) y 3.3 (dataset consolidado,
 predictoras de columnas objetivo, con `features_spec.md` versionado por
 hash). Siguiente fase natural: Fase 4 (modelos predictivos), sin empezar —
 requiere aprobar instalación de `scikit-learn`/`scipy`/`xgboost`/`joblib`
-antes de arrancar (regla 3 de AGENTS.md). Informe narrativo para Carlos
-(no técnico) en `INFORME_PROYECTO.md`, raíz del repo — mantenerlo al día
-en cada fase cerrada, no solo este archivo.
+antes de arrancar (regla 3 de AGENTS.md, pendiente de confirmar — F9).
+4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
+día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
+(avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
+`INFORME_ARQUITECTURA.md` (diseño del sistema) y `PLAN_DE_TRABAJO.md`
+(qué sigue y en qué orden).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`

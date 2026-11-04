@@ -2,7 +2,10 @@
 
 *Última actualización: 26 oct 2026 (fase 3 completa). Pensado para leerse de corrido, sin
 jerga técnica innecesaria — para el detalle técnico está `AGENTS.md` y
-la carpeta `docs/`.*
+la carpeta `docs/`. Este es el informe de **avance** (qué está hecho y
+funcionando); junto a él en la raíz del repo: `INFORME_PENDIENTES.md`
+(qué falta y de quién depende), `INFORME_ARQUITECTURA.md` (cómo está
+diseñado) y `PLAN_DE_TRABAJO.md` (qué sigue y en qué orden).*
 
 ## De qué se trata
 
@@ -226,4 +229,6 @@ Según el plan original: **Fase 4** (modelos predictivos — estadísticos
 y de machine learning; requiere aprobar la instalación de algunas
 librerías nuevas antes de arrancar), **Fase 5** (la capa que decide
 cuánto apostar y cuándo, con gestión de riesgo), y **Fase 6** (que todo
-el proceso corra solo todos los días, sin intervención manual).
+el proceso corra solo todos los días, sin intervención manual). Detalle
+de cada paso y el orden exacto: `PLAN_DE_TRABAJO.md`. Qué falta y de
+quién depende: `INFORME_PENDIENTES.md`.
