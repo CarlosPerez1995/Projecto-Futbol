@@ -51,9 +51,21 @@ por primera vez el criterio del plan (AUC > 0.6). `btts` sigue sin
 funcionar, y de hecho empeora con las cuotas (no hay cuota de mercado
 de BTTS cargada en este dataset). Detalle completo de ambas rondas en
 `docs/xgb_1x2_resultados.md` y `docs/xgb_binary_resultados.md`.
-4.5 (backtesting) en pausa hasta que Carlos decida cómo seguir —
-situación distinta a antes: ya hay modelos con ventaja demostrada
-(1X2, over_1_5, over_2_5), pero `btts` sigue sin servir.
+Carlos decidió avanzar a Fase 5 con 1X2/over_1_5/over_2_5 (excluyendo
+`btts`). **4.5 (backtesting) hecho el mismo 11 nov, tercera ronda**:
+`src/futbol/betting/` (nuevo paquete) — `ev_kelly.py` (valor esperado
++ Kelly fraccionado) y `backtest.py` (simulación real contra cuotas
+de cierre reales sobre el split `test`). **Resultado real, crítico:
+la estrategia "apostar con EV positivo" pierde 85% del banco simulado
+en 1X2 y 49% en over/under 2.5** — verificado a fondo que no es un
+bug (cuando el modelo discrepa de la cuota de mercado, el mercado
+resulta más acertado, no al revés). El edge de Fase 4 (vs. línea base
+trivial) no es el mismo tipo de edge que hace falta para apostar
+rentablemente contra el mercado que en gran parte generó ese edge.
+Detalle completo en `docs/backtest_resultados.md`. **Fase 5 queda
+bloqueada en este punto** — no se construyeron recomendaciones
+diarias ni registro de apuestas sobre una estrategia ya descartada por
+este mismo backtesting.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -313,6 +325,32 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     cuotas (AUC 0.453, peor que azar) porque no hay cuota de mercado
     dedicada a BTTS en este dataset. Diagnóstico completo (comparación
     controlada, ambas rondas) en `docs/xgb_binary_resultados.md`.
+  - `src/futbol/betting/` (nuevo paquete, 11 nov, tarea 5.1/4.5 —
+    Carlos decidió avanzar a Fase 5 con 1X2/over_1_5/over_2_5):
+    - `ev_kelly.py` — `expected_value(prob, cuota)` = `prob*cuota-1`;
+      `kelly_fraction` (Kelly completo, recortado a 0 si EV≤0);
+      `fractional_kelly` (mitad de Kelly por defecto + tope de 5% del
+      banco por apuesta — decisión de diseño, no del plan original,
+      documentada en el docstring del módulo junto con la advertencia
+      matemática central: un modelo que usa la cuota de mercado como
+      feature reproduce, en parte, al propio mercado — apostar con esa
+      probabilidad da EV negativo exacto igual al margen de la casa).
+    - `backtest.py` — `backtest_1x2`/`backtest_over_2_5` simulan
+      apostar con EV positivo + Kelly fraccionado sobre el split
+      `test` usando cuotas REALES de cierre (mismo `bookmaker='avg'`/
+      `is_closing=1` que la feature). **Resultado real, crítico**:
+      1X2 pierde 85% del banco simulado, over/under 2.5 pierde 49%.
+      Verificado a fondo que no es un bug (`docs/backtest_resultados.md`):
+      cuando el modelo discrepa de la cuota de mercado, la cuota
+      resulta más acertada que el modelo, en ambas direcciones y en
+      ambos mercados — el edge de Fase 4 (vs. línea base trivial) no
+      es el mismo tipo de edge que hace falta para apostar
+      rentablemente. `backtest_over_1_5` no existe: este dataset no
+      tiene ninguna cuota de mercado de over/under 1.5 cargada, pese a
+      que sí hay un modelo entrenado para ese target (`xgb_over_1_5`).
+      Núcleo de la simulación (`_simular_apuestas`) separado en una
+      función pura, sin BD ni modelo, para poder testearlo directo
+      (`tests/test_betting_backtest.py`).
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

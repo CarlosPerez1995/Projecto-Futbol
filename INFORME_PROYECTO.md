@@ -345,27 +345,74 @@ forma reciente, lo que piensan miles de apostadores) — algo que
 ningún promedio de partidos anteriores, por bueno que sea, puede
 reconstruir por sí solo.
 
+## Fase 5 — se empezó a construir, y un hallazgo real la frenó en seco (11 nov, mismo día)
+
+Con 1X2 y los dos mercados de goles ya mostrando ventaja real, Carlos
+decidió avanzar a la Fase 5: la capa que decidiría cuánto apostar y
+cuándo, con dinero real. El primer paso lógico, antes de construir
+nada que generara recomendaciones automáticas, era simular qué habría
+pasado apostando con esta misma lógica en el pasado — un "backtest"
+histórico, usando las cuotas REALES que existieron en su momento, no
+hipotéticas.
+
+**El resultado de esa simulación es el hallazgo más importante de
+todo el día, y hay que decirlo sin rodeos: la estrategia habría
+perdido plata, y mucha.** Apostando cada vez que el modelo veía una
+ventaja teórica (lo que se llama "valor esperado positivo"), con un
+tamaño de apuesta prudente (una fracción del banco, nunca más del 5%
+de una sola vez), el banco simulado habría terminado con apenas el 15%
+de su valor inicial en el mercado de resultado (1X2), y con la mitad
+en el de más/menos de 2.5 goles. No apostar nada habría sido mejor que
+seguir esta estrategia.
+
+Antes de aceptar este resultado se investigó a fondo si era un error
+de cálculo. No lo era: se comprobó que, en los partidos donde el
+modelo opinaba distinto que las casas de apuestas, **eran las casas de
+apuestas las que terminaban teniendo razón con más frecuencia, no el
+modelo** — en ambas direcciones (cuando el modelo creía más probable
+un resultado que el mercado, y cuando creía menos probable). Esto
+explica el porqué de fondo: buena parte de la mejora que las cuotas le
+dieron a los modelos (la que se celebró más arriba) viene de que el
+modelo aprendió a imitar, en gran medida, lo que ya opina el mercado
+— y copiar la opinión del mercado para apostar contra ese mismo
+mercado no da ninguna ventaja; de hecho, garantiza perder el margen
+que cobra la casa de apuestas con cada apuesta.
+
+Por este motivo, **no se construyó el resto de la Fase 5** (las
+recomendaciones diarias automáticas, el registro de apuestas) sobre
+esta base — habría sido poner en producción, a mayor escala, una
+estrategia que el propio backtest ya mostró que pierde dinero. Fase 5
+queda pausada en este punto, con un diagnóstico claro en
+`docs/backtest_resultados.md`, a la espera de que Carlos decida cómo
+seguir: abandonar este enfoque, buscar una señal realmente
+independiente del mercado, o usar los modelos solo como referencia
+informativa sin apostar de forma automática.
+
 ## Dónde está el proyecto hoy (11 nov 2026)
 
-Fases 0 a 3 completas. Fase 4 con 4 de 5 tareas hechas (split temporal,
-los 3 modelos, ya re-medidos dos veces: con xG y con cuotas de
-mercado) — el pipeline funciona de punta a punta y, con las cuotas
-incluidas, **3 de los 4 modelos (1X2, "más de 1.5 goles" y "más de
-2.5 goles") ya muestran una ventaja real sobre predecir la tasa
-histórica**; el cuarto ("ambos equipos marcan") sigue sin funcionar.
-La base de datos tiene, con datos reales ya cargados: 5 ligas, 10
-temporadas, 110 equipos, miles de partidos con su marcador y su xG
-real, más de 130.000 filas de cuotas históricas (los 3 mercados: 1x2,
-más/menos goles y hándicap asiático), la tabla de posiciones
-histórica, y el dataset de features.
+Fases 0 a 3 completas. Fase 4 completa (sus 5 tareas, incluido el
+backtesting). Fase 5 arrancó y se frenó en su primer paso real: hay
+código de valor esperado y Kelly fraccionado (`src/futbol/betting/`),
+pero el backtest mostró que, con los modelos actuales, apostar según
+esa lógica pierde dinero — no se avanzó más por ese camino. El
+pipeline de modelado (Fases 2 a 4) funciona de punta a punta y 3 de
+los 4 modelos de Fase 4 (1X2, "más de 1.5 goles" y "más de 2.5 goles")
+muestran una ventaja real sobre predecir la tasa histórica — pero esa
+ventaja, se descubrió hoy mismo, no alcanza para apostar
+rentablemente contra el mercado que en parte la generó. La base de
+datos tiene, con datos reales ya cargados: 5 ligas, 10 temporadas, 110
+equipos, miles de partidos con su marcador y su xG real, más de
+130.000 filas de cuotas históricas (los 3 mercados: 1x2, más/menos
+goles y hándicap asiático), la tabla de posiciones histórica, y el
+dataset de features.
 
 ## Lo que sigue
 
-Antes de nada más: con 3 de 4 modelos ya con ventaja demostrada,
-Carlos tiene que decidir cómo seguir (ver `INFORME_PENDIENTES.md`) —
-la situación es bien distinta a la de unas horas antes. Después de
-eso: terminar **Fase 4** (falta el backtesting histórico, en pausa
-hasta esa decisión), **Fase 5** (la capa que decide cuánto apostar y
-cuándo, en pausa) y **Fase 6** (que todo el proceso corra solo todos
-los días). Detalle de cada paso
-y el orden exacto: `PLAN_DE_TRABAJO.md`.
+Antes de nada más: con el backtest real mostrando pérdidas severas,
+Carlos tiene que decidir cómo seguir con Fase 5 (ver
+`INFORME_PENDIENTES.md`) — la pregunta ya no es "qué tan rentable es"
+sino "vale la pena seguir por este camino o hace falta una señal
+distinta". Después de eso: **Fase 5** (en pausa, bloqueada por este
+hallazgo) y **Fase 6** (que todo el proceso corra solo todos los
+días, depende de que Fase 5 termine de resolverse). Detalle de cada
+paso y el orden exacto: `PLAN_DE_TRABAJO.md`.

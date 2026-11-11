@@ -5,37 +5,49 @@
 
 ## Bloqueante activo — decisión de Carlos
 
-**Cómo seguir en Fase 4, tras dos rondas de re-medición el 11 nov**:
-primero se probó el xG (no alcanzó, ver abajo). Después, decisión de
-Carlos: probar las cuotas de mercado (probabilidad implícita de la
-cuota de cierre promedio, mercados 1x2 y over/under 2.5, ya cargados
-desde Fase 2) como feature predictora. **Resultado real: esta sí
-funciona.** El 1X2 le gana a la línea base trivial con margen real
-(LogLoss 1.037 vs. 1.078 trivial), y `over_1_5`/`over_2_5` cruzan por
-primera vez el criterio del plan (AUC > 0.6: 0.601 y 0.604). `btts`
-sigue sin funcionar — y de hecho empeora con las cuotas (AUC 0.453,
-peor que azar), porque no hay una cuota de mercado dedicada a BTTS en
-este dataset. Detalle completo en `docs/xgb_1x2_resultados.md` /
-`docs/xgb_binary_resultados.md`.
+**Cómo seguir en Fase 5, tras construir y backtestear EV/Kelly el 11
+nov (decisión previa de Carlos: avanzar con 1X2/over_1_5/over_2_5)**:
+al simular con cuotas reales de cierre lo que habría pasado apostando
+cada vez que el modelo calibrado ve valor esperado positivo
+(`src/futbol/betting/backtest.py`), **el resultado real es una
+pérdida severa**: -85% del banco simulado en 1X2, -49% en over/under
+2.5 (`over_1_5` no se pudo backtestear, no hay cuota de mercado de ese
+total cargada en este dataset). Verificado a fondo que no es un bug:
+cuando el modelo discrepa de la cuota de mercado, la cuota de mercado
+resulta ser más acertada que el modelo, en ambas direcciones y en
+ambos mercados probados — ver `docs/backtest_resultados.md` para el
+detalle completo, incluida la explicación matemática de por qué
+(el edge de Fase 4 viene en gran parte de usar la propia cuota de
+mercado como feature, y reproducir el mercado no da ventaja para
+apostar contra él).
 
-**Camino pendiente de que Carlos decida, con la situación ya
-cambiada (2 de 3 modelos binarios con ventaja demostrada)**:
-1. Avanzar a Fase 5 (capa prescriptiva) con `1X2`, `over_1_5` y
-   `over_2_5`, excluyendo explícitamente `btts` hasta que tenga una
-   señal propia.
-2. Cargar también la cuota de mercado específica de BTTS (si
-   `soccerdata`/football-data.co.uk la tiene disponible) antes de
-   decidir sobre ese mercado puntual.
-3. Pausar Fase 4/5 del todo de todos modos, por otro motivo (decisión
-   de negocio, no técnica).
+**No se construyeron las recomendaciones diarias ni el registro de
+apuestas (puntos 2 y 3 de Fase 5)** sobre una estrategia que el propio
+backtesting ya descartó — habría sido automatizar, a mayor escala, el
+mismo error.
+
+**Camino pendiente de que Carlos decida, con este hallazgo nuevo**:
+1. Pausar Fase 5 del todo — el enfoque "EV + Kelly contra cuotas de
+   mercado" tal como está planteado no funciona con estos modelos.
+2. Buscar una señal genuinamente independiente del mercado (ni forma
+   histórica ni xG, ya probados y en gran parte ya incorporados por el
+   mercado mismo) antes de reintentar una estrategia de apuestas real.
+3. Usar los modelos solo como herramienta informativa (comparar la
+   opinión del modelo con la del mercado, sin apostar dinero real de
+   forma automática).
+4. Otra cosa.
 
 **Fase 5 sigue en pausa** hasta esta decisión — ver
 `PLAN_DE_TRABAJO.md`.
 
 ## Resueltos recientemente
 
+- **Backtesting real de EV/Kelly (11 nov)**: decisión de Carlos
+  ejecutada (avanzar a Fase 5) y backtesteada contra cuotas reales
+  antes de construir nada más — resultado real: pérdida severa, ver
+  bloqueante arriba y `docs/backtest_resultados.md`.
 - **Cuotas de mercado como feature, resultado real (11 nov)**:
-  decisión de Carlos, ejecutada y reportada — ver bloqueante arriba y
+  decisión de Carlos, ejecutada y reportada —
   `docs/xgb_1x2_resultados.md` / `docs/xgb_binary_resultados.md`.
 - **xG cargado y re-medido (11 nov)**: decisión de Carlos, ejecutada y
   reportada — no alcanzó por sí solo (ver historial en los mismos
@@ -57,9 +69,11 @@ cambiada (2 de 3 modelos binarios con ventaja demostrada)**:
 
 ## Fases completas sin empezar
 
-Fase 5 (capa prescriptiva, en pausa — ver bloqueante arriba) y Fase 6
-(operación diaria) no tienen una sola línea de código todavía. Fase 4
-(modelos predictivos) tiene 4 de 5 tareas hechas (falta el
-backtesting, también en pausa por el mismo motivo). Detalle de qué
-incluye cada una, en qué orden, y qué decisiones hace falta tomar en
-el camino: ver `PLAN_DE_TRABAJO.md`.
+Fase 4 (modelos predictivos) ya tiene sus 5 tareas hechas, incluido el
+backtesting. Fase 5 (capa prescriptiva) tiene 1 de 3 tareas hechas
+(EV/Kelly + backtest) pero bloqueada por el hallazgo de arriba — las
+otras 2 (recomendaciones diarias, registro de apuestas) no se
+construyeron a propósito. Fase 6 (operación diaria) no tiene una sola
+línea de código todavía. Detalle de qué incluye cada una, en qué
+orden, y qué decisiones hace falta tomar en el camino: ver
+`PLAN_DE_TRABAJO.md`.

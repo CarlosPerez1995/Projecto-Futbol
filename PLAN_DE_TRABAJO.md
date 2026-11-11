@@ -43,10 +43,20 @@ cada uno construido sobre el anterior:
    con margen real. `btts` sigue sin funcionar — empeora con las
    cuotas (AUC 0.453, peor que azar), no tiene cuota de mercado
    dedicada en este dataset. Ver `docs/xgb_binary_resultados.md`.
-5. **Backtesting histórico** — **en pausa**, pendiente de que Carlos
-   decida si se corre ya para `1X2`/`over_1_5`/`over_2_5` (que sí
-   tienen edge demostrado) excluyendo `btts`, o se espera más (ver
-   punto de decisión abajo).
+5. ~~**Backtesting histórico**~~ — **Hecho (11 nov, tercera ronda,
+   tras la decisión de Carlos de avanzar a Fase 5 con 1X2/over_1_5/
+   over_2_5)**: `src/futbol/betting/backtest.py`, simula apostar con
+   EV positivo + Kelly fraccionado usando cuotas REALES de cierre
+   sobre el split `test` nunca visto en entrenamiento/calibración.
+   **Resultado real, crítico: la estrategia pierde dinero de forma
+   severa** — 1X2 pierde 85% del banco simulado, over/under 2.5 pierde
+   49%; `over_1_5` no se pudo backtestear (no hay cuota de mercado de
+   ese total cargada en este dataset). Verificado a fondo que no es un
+   bug: cuando el modelo se aparta de la cuota de mercado, el mercado
+   resulta ser más acertado que el modelo, no al revés — el "edge"
+   medido contra la línea base trivial no es el mismo tipo de edge que
+   hace falta para apostar rentablemente contra ese mercado. Detalle
+   completo en `docs/backtest_resultados.md`.
 6. ~~**Cargar xG real y volver a medir**~~ — **Hecho (11 nov, primera
    ronda, decisión de Carlos ejecutada)**: `home_xg`/`away_xg` reales
    cargados en `matches` (`db/schema_v4.sql`, `load_xg`), features de
@@ -65,32 +75,39 @@ cada uno construido sobre el anterior:
    a ser, por lejos, las features más importantes del modelo 1X2 (~48%
    de la importancia total).
 
-**Punto de decisión actualizado (11 nov, tras la ronda de cuotas) —
-la situación cambió de forma real**: `1X2`, `over_1_5` y `over_2_5`
-ya tienen una ventaja demostrada sobre la línea base trivial;
-`over_1_5`/`over_2_5` cumplen el criterio del plan (AUC>0.6). `btts`
-sigue sin funcionar, y el Dixon-Coles sigue sin verse afectado por
-ninguna de las dos rondas (no consume estas features). Opciones para
-Carlos: (1) avanzar a Fase 5 con los 3 modelos que sí funcionan,
-excluyendo `btts` explícitamente, (2) buscar una cuota de mercado
-específica de BTTS antes de decidir sobre ese mercado puntual, o (3)
-pausar Fase 4/5 del todo por otro motivo. **Fase 5 sigue en pausa
-hasta esta decisión.**
+**Punto de decisión del 11 nov, tras la ronda de cuotas (superado por
+el hallazgo del backtesting, ver abajo)**: Carlos decidió avanzar a
+Fase 5 con `1X2`/`over_1_5`/`over_2_5`, excluyendo `btts`. Al construir
+el primer paso real de Fase 5 (backtesting + EV/Kelly) se encontró que
+esa ventaja (medida en LogLoss/AUC contra la trivial) **no se traduce
+en apostar rentablemente** contra el mercado — ver
+`docs/backtest_resultados.md`. El Dixon-Coles sigue sin verse afectado
+por ninguna ronda de Fase 4 (no consume estas features).
 
 ## Fase 5 — Capa prescriptiva
 
-**En pausa** (ver punto de decisión arriba). Depende de Fase 4
-completa Y de tener al menos un modelo con ventaja demostrada sobre la
-línea base trivial, no solo "con probabilidades calibradas".
+**Bloqueada por un hallazgo real, no por falta de decisión**: al
+construir el punto 1 (EV + Kelly) y backtestearlo contra cuotas reales
+(`src/futbol/betting/`), la estrategia "apostar con EV positivo" pierde
+85% del banco simulado en 1X2 y 49% en over/under 2.5 — ver
+`docs/backtest_resultados.md` para el detalle completo, incluida la
+verificación de que no es un bug de código. **No se construyeron los
+puntos 2 y 3 sobre esta base ya demostrada perdedora** — hacerlo sería
+automatizar, a mayor escala, una estrategia que el propio backtesting
+de este mismo punto 1 descartó. Queda pendiente de que Carlos decida
+cómo seguir (ver `INFORME_PENDIENTES.md`).
 
-1. **Valor esperado y Kelly fraccionado** — las fórmulas que deciden
-   si una apuesta vale la pena (`EV`) y cuánto arriesgar si sí (`Kelly`,
-   acotado a un porcentaje máximo del banco).
-2. **Recomendaciones diarias** — un archivo generado automáticamente
-   con los partidos de los próximos días que valga la pena apostar,
-   según el modelo.
-3. **Registro de apuestas y resultados** — para medir, con el tiempo,
-   si las recomendaciones realmente dan plata o no.
+1. ~~**Valor esperado y Kelly fraccionado**~~ — **Hecho (11 nov)**:
+   `src/futbol/betting/ev_kelly.py` (fórmulas, con la advertencia
+   matemática de por qué un modelo que usa la cuota de mercado como
+   feature no necesariamente da ventaja real para apostar) +
+   `src/futbol/betting/backtest.py` (backtest real, resultado arriba).
+2. **Recomendaciones diarias** — **no construido**, pendiente de que
+   se resuelva el bloqueante de arriba. Construirlo ahora generaría
+   recomendaciones de apuestas reales sobre una estrategia que ya se
+   demostró perdedora en backtesting.
+3. **Registro de apuestas y resultados** — **no construido**, mismo
+   motivo que el punto 2.
 
 ## Fase 6 — Operación
 
