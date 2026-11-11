@@ -1,57 +1,44 @@
 # Resultados del modelo de clasificación 1X2 con XGBoost (tarea 4.3)
 
-**Actualizado el 11 nov** tras cargar xG real a la BD y volver a medir
-(decisión de Carlos) — ver `docs/xgb_binary_resultados.md` para el
-detalle completo del bug de calibración encontrado en esta remedición
-y la comparación controlada con/sin xG. Resumen de lo que cambia acá:
-el xG mejora el LogLoss de este modelo de forma marginal (1.076 →
-1.073, calibración sigmoide en ambos casos) — sigue sin haber una
-ventaja clara sobre la línea base trivial.
+**Actualizado el 11 nov, segunda ronda del día**: tras agregar las
+probabilidades implícitas de la cuota de cierre de mercado como
+feature (decisión de Carlos), el LogLoss mejora de forma real: 1.073
+→ **1.037**, ahora con un margen claro (0.041) sobre la línea base
+trivial (1.078) — a diferencia de la ronda anterior (solo xG), donde
+la mejora era de 0.003 y no significativa. Ver
+`docs/xgb_binary_resultados.md` para el detalle completo de ambas
+rondas, el bug de calibración encontrado en la primera, y por qué las
+cuotas ayudan tanto.
 
 Corrida real contra el dataset consolidado completo (3.515 partidos),
 split 70/15/15 (`train`=2.461 / `val`=528 / `test`=526) — mismo split
-que antes de cargar xG, el pendiente no agregó partidos nuevos.
+en las 3 corridas (sin features nuevas, con xG, con xG+cuotas): ningún
+pendiente agregó partidos nuevos.
 
-## Resultado en TEST (con xG, calibración sigmoide — ver nota de corrección abajo)
+## Resultado en TEST (con xG + cuotas de mercado, calibración sigmoide)
 
 | Métrica | Valor real | Criterio del plan | ¿Cumple? |
 |---|---|---|---|
-| LogLoss | 1.073 | < 1.1 | Sí, el número — ver nota sobre qué tan significativo es |
-| Brier (ver nota de convención abajo) | 0.647 | < 0.35 | Depende de la convención, ver abajo |
+| LogLoss | 1.037 | < 1.1 | Sí, y con margen real sobre la trivial (ver abajo) |
+| Brier (ver nota de convención abajo) | 0.620 | < 0.35 | Depende de la convención, ver abajo |
 
 LogLoss trivial (predecir siempre la proporción H/D/A de `train` para
-todo `test`) = **1.078**. El modelo (1.073) queda apenas mejor que la
-trivial — una diferencia de 0.005, dentro de lo que podría ser ruido
-de una sola corrida de test con 526 partidos. No es la ventaja
-contundente que haría falta para confiar en el modelo sobre simplemente
-conocer las proporciones históricas de local/empate/visitante.
+todo `test`) = **1.078**. El modelo (1.037) le gana por 0.041 — a
+diferencia de las dos corridas anteriores (sin xG: 1.076; con xG sin
+cuotas: 1.073), ambas dentro de lo que podía ser ruido, esta diferencia
+ya es sustancial para un test de 526 partidos.
 
-## Corrección importante: bug de calibración isotónica, encontrado al re-medir con xG
+## Historial: por qué el xG solo no alcanzaba (primera ronda del 11 nov)
 
-Al re-medir con xG, el LogLoss de este modelo saltó a 1.407 usando la
-calibración isotónica original del plan — mucho peor que el 1.090 que
-se había reportado antes (sin xG). Investigado antes de reportarlo
-como "el resultado real": la isotónica asigna probabilidad
-**exactamente 0.0** a la clase verdadera en 5 de los 526 partidos de
-test; `log_loss` recorta esos ceros a un épsilon numérico, lo que
-dispara una penalización gigante (~34 nats cada uno) que no tiene
-nada que ver con que el modelo haya empeorado. Causa: `val` tiene solo
-~528 filas repartidas en 3 clases (one-vs-rest dentro de
-`CalibratedClassifierCV`), insuficiente para que una regresión
-isotónica (no paramétrica) generalice bien en los extremos — la
-sigmoide (Platt, 2 parámetros) es mucho más robusta con ese tamaño de
-muestra. Se comparó sin calibrar (1.077), isotónica (1.407, rota) y
-sigmoide (1.073) antes de decidir el cambio. **Se corrigió el código**
-(`calibrate_xgb_1x2`, ahora `method="sigmoid"`) — ver también
-`docs/xgb_binary_resultados.md`, que tiene el mismo bug y la misma
-corrección para los 3 modelos binarios.
-
-Esto implica que el número reportado anteriormente (1.090, con
-isotónica) para la corrida SIN xG también estaba potencialmente
-afectado por este mismo bug, en menor grado. La comparación limpia
-antes/después de xG, con la misma calibración (sigmoide) en ambos
-lados, es: **sin xG = 1.076, con xG = 1.073** — una mejora de 0.003,
-no significativa.
+Al re-medir por primera vez ese día (solo con xG, antes de probar las
+cuotas) se encontró y corrigió un bug real de calibración isotónica
+(`CalibratedClassifierCV(method="isotonic")` asignaba probabilidad
+exacta 0.0 a la clase verdadera en varios partidos de test con un
+`val` de solo ~528 filas — detalle completo en
+`docs/xgb_binary_resultados.md`). Corregido a `method="sigmoid"`. Con
+esa corrección, la comparación limpia sin cuotas fue: sin xG = 1.076,
+con xG = 1.073 — una mejora de 0.003, no significativa. El salto real
+vino de las cuotas, no del xG.
 
 ## Nota honesta sobre el Brier Score: posible ambigüedad del plan original
 
@@ -66,43 +53,44 @@ pueden comparar entre sí sin problema.
 El plan arquitectónico original pedía "Brier < 0.35" sin especificar
 la fórmula exacta. Si en cambio se promedia esa suma entre las 3
 clases (otra convención común en la literatura de predicción
-deportiva), el número de este modelo sería `0.647 / 3 ≈ 0.216` — que
+deportiva), el número de este modelo sería `0.620 / 3 ≈ 0.207` — que
 SÍ cumpliría el 0.35. No se cambió la fórmula ya usada para "hacer
 pasar" el número: se deja reportado el valor real bajo la definición
 documentada, con esta nota explícita.
 
-## Importancia de features (top 8, modelo base antes de calibrar, con xG)
+## Importancia de features (top 8, modelo base antes de calibrar, con xG + cuotas)
 
 | Feature | Importancia |
 |---|---|
-| `current_streak_result_away` | 0.112 |
-| `xg_scored_avg_last5_home` | 0.094 |
-| `form_points_avg_last5_home` | 0.087 |
-| `xg_scored_avg_last5_away` | 0.081 |
-| `form_points_avg_last5_away` | 0.066 |
-| `xg_conceded_avg_last5_home` | 0.065 |
-| `clean_sheets_rate_last5_away` | 0.052 |
-| `xg_conceded_avg_last5_away` | 0.049 |
+| `odds_implied_prob_home` | 0.204 |
+| `odds_implied_prob_away` | 0.165 |
+| `odds_implied_prob_draw` | 0.062 |
+| `odds_implied_prob_over_2_5` | 0.052 |
+| `matches_played_before_home` | 0.038 |
+| `form_points_avg_last5_home` | 0.037 |
+| `matches_played_before_away` | 0.034 |
+| `xg_scored_avg_last5_home` | 0.034 |
 
-Las 4 features nuevas de xG entran entre las 8 más importantes del
-modelo (el árbol sí las usa para dividir), pero eso no se traduce en
-una mejora medible del LogLoss en test — son útiles para que el
-modelo "explique" mejor el `train` (añaden información que antes no
-tenía), pero no generalizan a una ventaja real sobre la trivial en
-datos nuevos. Mismo patrón que ya se documentó para las features de
-forma de la Fase 3: el modelo encuentra *algo* en `train`, pero eso no
-necesariamente mejora `test`.
+Diferencia clara con la ronda anterior (donde `current_streak_result`/
+`form_points`/`xg_*` dominaban, ~0.09-0.11 cada una): ahora las 4
+columnas de cuotas juntas acaparan cerca de la mitad de la importancia
+total (0.20+0.17+0.06+0.05 ≈ 0.48) — el modelo encontró que la
+probabilidad implícita del mercado es, por lejos, la señal más fuerte
+disponible, más que cualquier combinación de features de forma propia
+calculadas desde cero. Tiene sentido: el mercado agrega información que
+ningún promedio de partidos anteriores puede capturar (lesiones,
+suspensiones, contexto puntual del partido).
 
 ## Decisiones de diseño (no pedidas explícitamente por el plan, pero necesarias)
 
 - **Un solo modelo global**, no uno por liga como el Dixon-Coles —
-  XGBoost aprende patrones de forma relativa (promedios, rachas) que
-  generalizan razonablemente entre ligas; a diferencia del modelo
-  estadístico, acá no hay un parámetro explícito por equipo que
-  tendría que vivir dentro de una sola liga. No se incluyó
-  `league_code` como feature categórica en esta primera versión —
-  queda como posible mejora futura si hiciera falta más poder
-  predictivo por liga.
+  XGBoost aprende patrones de forma relativa (promedios, rachas,
+  probabilidades de mercado) que generalizan razonablemente entre
+  ligas; a diferencia del modelo estadístico, acá no hay un parámetro
+  explícito por equipo que tendría que vivir dentro de una sola liga.
+  No se incluyó `league_code` como feature categórica en esta primera
+  versión — queda como posible mejora futura si hiciera falta más
+  poder predictivo por liga.
 - **Validación cruzada con `TimeSeriesSplit`, no k-fold al azar**: la
   búsqueda de hiperparámetros (`GridSearchCV`) usa folds que respetan
   el orden temporal — mezclar al azar en series de tiempo es otra
@@ -111,8 +99,15 @@ necesariamente mejora `test`.
   mismos datos que ya vio el modelo al ajustarse daría una calibración
   artificialmente optimista.
 - **Calibración sigmoide (Platt), no isotónica** (cambiado el 11 nov,
-  ver sección dedicada arriba) — la isotónica es inestable con un
+  ver sección histórica arriba) — la isotónica es inestable con un
   `val` de este tamaño (~528 filas).
+- **Cuota de cierre promedio (`bookmaker='avg'`), no de una casa
+  puntual** (agregado el 11 nov, ver `docs/features/odds.py` /
+  `docs/odds_columns_map.md`) — es la única columna de cuotas con
+  cobertura estable entre temporadas, el esquema por casa cambia.
+  Probabilidad implícita calculada con "devigging" (`1/cuota`
+  normalizado para que la suma dé 1), no la cuota cruda — la cuota
+  cruda incluye el margen de la casa, no es una probabilidad.
 - **`current_streak_result` (texto `W`/`D`/`L`) se codifica a escala
   ordinal simple** (`W`=1, `D`=0, `L`=−1) antes de entrenar — XGBoost
   en esta versión no acepta columnas de texto directo sin configurar

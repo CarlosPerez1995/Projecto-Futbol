@@ -34,22 +34,26 @@ le gana con claridad a una línea base trivial** (predecir siempre la
 tasa histórica de train) al comparar en test — hallazgo real
 encontrado el 11 nov al construir 4.4, que obligó a revisar también
 4.2/4.3 (no se habían comparado contra ninguna línea base al
-reportarlos la primera vez, corregido). **Re-medido el mismo 11 nov**
-tras cargar xG real a la BD y agregar `xg_scored_avg_last5`/
-`xg_conceded_avg_last5` como features de equipo (decisión de Carlos):
-resultado real, el xG no cambia la conclusión — mejora marginal en 1X2
-y en `over_2_5` (que pasa a ganarle a la trivial por un margen chico),
-sin cambio o levemente peor en los otros dos mercados, ninguno cruza
-el umbral del plan. Al remedir se encontró y corrigió un bug real de
-calibración isotónica inestable con un `val` de ~528 filas (asignaba
-probabilidad exacta 0.0 a la clase verdadera en varios partidos de
-test, disparando el LogLoss por el recorte numérico de `log_loss`) —
+reportarlos la primera vez, corregido). **Re-medido el mismo 11 nov,
+dos rondas**: primero xG (`xg_scored_avg_last5`/`xg_conceded_avg_last5`
+por equipo) — no alcanzó, mejora marginal en 1X2 y en `over_2_5`,
+ninguno cruza el umbral del plan; al medir esta ronda se encontró y
+corrigió un bug real de calibración isotónica inestable con un `val`
+de ~528 filas (asignaba probabilidad exacta 0.0 a la clase verdadera,
+disparando el LogLoss por el recorte numérico de `log_loss`) —
 `calibrate_xgb_1x2`/`calibrate_binary_model` pasaron de
-`method="isotonic"` a `method="sigmoid"`. Detalle completo en
+`method="isotonic"` a `method="sigmoid"`. Segunda ronda, **cuotas de
+mercado como feature** (probabilidad implícita de la cuota de cierre
+promedio, `src/futbol/features/odds.py`, decisión de Carlos):
+**resultado real, esta sí funciona** — 1X2 le gana a la trivial con
+margen real (LogLoss 1.037 vs. 1.078), y `over_1_5`/`over_2_5` cruzan
+por primera vez el criterio del plan (AUC > 0.6). `btts` sigue sin
+funcionar, y de hecho empeora con las cuotas (no hay cuota de mercado
+de BTTS cargada en este dataset). Detalle completo de ambas rondas en
 `docs/xgb_1x2_resultados.md` y `docs/xgb_binary_resultados.md`.
-4.5 (backtesting) en pausa hasta que Carlos decida cómo seguir — no
-tiene sentido medir rentabilidad de apostar con modelos sin edge
-demostrado todavía.
+4.5 (backtesting) en pausa hasta que Carlos decida cómo seguir —
+situación distinta a antes: ya hay modelos con ventaja demostrada
+(1X2, over_1_5, over_2_5), pero `btts` sigue sin servir.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -217,12 +221,27 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     volver a medir Fase 4; resultado real en
     `docs/xgb_binary_resultados.md`. Ver `docs/features_map.txt` para
     el detalle de cada columna `_home`/`_away`.
+  - `src/futbol/features/odds.py` — probabilidades implícitas de la
+    cuota de mercado como feature predictora (agregado el 11 nov,
+    decisión de Carlos, segunda ronda del día): `compute_odds_features`
+    toma la cuota de **cierre promedio** (`bookmaker='avg'`,
+    `is_closing=1` — única con cobertura estable entre temporadas, ver
+    `docs/odds_columns_map.md`) de los mercados 1x2 y over/under 2.5 ya
+    cargados en Fase 2, y la convierte de cuota a probabilidad
+    quitando el margen de la casa ("devigging": `1/cuota` normalizado
+    para que la suma dé 1). No es fuga de datos: la cuota de cierre se
+    fija antes del partido. **Resultado real: la feature más fuerte de
+    toda la Fase 4** — 1X2 y `over_1_5`/`over_2_5` pasan a tener una
+    ventaja real sobre la línea base trivial (los últimos 2 cruzan el
+    criterio del plan, AUC > 0.6, por primera vez); `btts` no tiene
+    cuota de mercado dedicada en este dataset y empeora. Detalle en
+    `docs/xgb_1x2_resultados.md`/`docs/xgb_binary_resultados.md`.
   - `src/futbol/features/dataset.py` — dataset consolidado (tarea 3.3,
-    Fase 3): `build_model_dataset` une 3.1+3.2 por `match_id` y separa
-    columnas en `predictor_columns()` (features de equipo, lo que un
-    modelo puede usar de entrada) vs. `TARGET_COLUMNS` (resultado real
-    del partido — NUNCA como entrada, es lo que el modelo debe
-    predecir); `save_model_dataset` escribe
+    Fase 3): `build_model_dataset` une 3.1+3.2+cuotas por `match_id` y
+    separa columnas en `predictor_columns()` (features de equipo +
+    cuotas de mercado, lo que un modelo puede usar de entrada) vs.
+    `TARGET_COLUMNS` (resultado real del partido — NUNCA como entrada,
+    es lo que el modelo debe predecir); `save_model_dataset` escribe
     `data/processed/model_dataset.csv` + `features_spec.md` (fecha y
     hash SHA-256 del CSV, para saber con qué versión exacta de
     features se entrenó cada modelo más adelante).
@@ -274,7 +293,12 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     numérico y XGBoost acepta sus `NaN` nativamente, sin imputar.
     Resultados completos, con una nota honesta sobre una posible
     ambigüedad de convención en la métrica Brier del plan original, en
-    `docs/xgb_1x2_resultados.md`.
+    `docs/xgb_1x2_resultados.md`. **Resultado final (con xG + cuotas
+    de mercado, re-medido 11 nov): LogLoss 1.037 en test, le gana a la
+    trivial (1.078) con margen real** (0.041 — a diferencia de la
+    ronda de solo xG, 0.003, no significativa). Las 4 columnas de
+    cuotas acaparan ~48% de la importancia total de features del
+    modelo base.
   - `src/futbol/models/xgb_binary.py` — over/under y BTTS con XGBoost
     (tarea 4.4, Fase 4): mismo patrón exacto que `xgb_1x2.py`
     (reusa su `_features()`, misma calibración sigmoide desde el 11
@@ -282,11 +306,13 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     (`BINARY_TARGETS = ["over_1_5", "over_2_5", "btts"]`) con un
     modelo separado por objetivo, no multi-etiqueta.
     `fit_calibrate_evaluate_all()` corre el flujo completo para los 3
-    de una. **Resultado real (con xG, re-medido 11 nov): ningún AUC
-    pasa de 0.56** (criterio del plan era >0.6) — solo `over_2_5` le
-    gana a la línea base trivial en LogLoss, por un margen chico.
-    Diagnóstico completo (comparación controlada con/sin xG, misma
-    calibración en ambos lados) en `docs/xgb_binary_resultados.md`.
+    de una. **Resultado final (con xG + cuotas de mercado, re-medido
+    11 nov): `over_1_5` (AUC 0.601) y `over_2_5` (AUC 0.604) cruzan por
+    primera vez el criterio del plan (>0.6) y le ganan a la trivial con
+    margen real.** `btts` sigue sin funcionar — empeora con las
+    cuotas (AUC 0.453, peor que azar) porque no hay cuota de mercado
+    dedicada a BTTS en este dataset. Diagnóstico completo (comparación
+    controlada, ambas rondas) en `docs/xgb_binary_resultados.md`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

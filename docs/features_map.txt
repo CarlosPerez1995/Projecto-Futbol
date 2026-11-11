@@ -71,3 +71,22 @@ partido de un equipo en toda la BD no tiene historia y queda en blanco
                                            partidos anteriores (mismo
                                            patrón sin fuga que goals_*)
   xg_conceded_avg_last5_{home,away}     - idem, xG en contra
+
+
+Columnas de cuotas de mercado (agregadas el 11 nov, segunda ronda) — match-level, sin sufijo _home/_away
+==========================================================================================================
+
+Generado por src/futbol/features/odds.py::compute_odds_features().
+Probabilidad implícita de la cuota de CIERRE promedio entre casas
+(bookmaker='avg', is_closing=1 — ver docs/odds_columns_map.md), sin el
+margen de la casa (técnica de "devigging": 1/cuota normalizado para
+que la suma dé 1). No es fuga de datos: la cuota de cierre se fija
+antes del partido. NA si ese partido no tiene cuota de cierre
+cargada para ese mercado (3.504 de 3.515 partidos sí la tienen).
+
+  odds_implied_prob_home       - probabilidad implícita de que gane el
+                                  local (mercado 1x2)
+  odds_implied_prob_draw       - idem, empate
+  odds_implied_prob_away       - idem, gane el visitante
+  odds_implied_prob_over_2_5   - probabilidad implícita de más de 2.5
+                                  goles en total (mercado over/under 2.5)

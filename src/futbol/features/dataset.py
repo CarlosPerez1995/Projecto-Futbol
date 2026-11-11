@@ -9,7 +9,11 @@ entrenando un modelo con fuga de datos sin darse cuenta:
 - **Predictoras** (lo que se sabría ANTES del partido): identificación
   (liga, temporada, fecha, equipos) + todas las features de forma por
   equipo de la tarea 3.2, que ya están construidas sin mirar el propio
-  partido (ver ``tests/test_features_teams.py``).
+  partido (ver ``tests/test_features_teams.py``) + probabilidades
+  implícitas de la cuota de cierre de mercado (agregadas el 11 nov,
+  decisión de Carlos — ver ``futbol.features.odds``). La cuota de
+  cierre se fija antes del partido, así que usarla como predictora no
+  es fuga de datos.
 - **Objetivo** (lo que se quiere predecir, solo se conoce DESPUÉS del
   partido): todo lo que sale directo del marcador real — resultado
   1X2, total de goles, los flags de over, BTTS. Viene de
@@ -33,6 +37,7 @@ from pathlib import Path
 import pandas as pd
 
 from futbol.features.matches import compute_match_features
+from futbol.features.odds import ODDS_FEATURE_COLUMNS, compute_odds_features
 from futbol.features.teams import _FEATURE_COLUMNS, compute_team_features
 
 DEFAULT_OUTPUT_PATH = Path("data/processed/model_dataset.csv")
@@ -50,7 +55,11 @@ TARGET_COLUMNS = [
 
 
 def predictor_columns() -> list[str]:
-    return [f"{c}_home" for c in _FEATURE_COLUMNS] + [f"{c}_away" for c in _FEATURE_COLUMNS]
+    return (
+        [f"{c}_home" for c in _FEATURE_COLUMNS]
+        + [f"{c}_away" for c in _FEATURE_COLUMNS]
+        + ODDS_FEATURE_COLUMNS
+    )
 
 
 def build_model_dataset(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -60,6 +69,7 @@ def build_model_dataset(conn: sqlite3.Connection) -> pd.DataFrame:
     """
     partido_feats = compute_match_features(conn)
     equipo_feats = compute_team_features(conn)
+    odds_feats = compute_odds_features(conn)
 
     assert len(partido_feats) == len(equipo_feats), (
         "build_model_dataset: compute_match_features y compute_team_features "
@@ -77,6 +87,14 @@ def build_model_dataset(conn: sqlite3.Connection) -> pd.DataFrame:
     assert len(df) == len(partido_feats), (
         "build_model_dataset: el merge cambió la cantidad de filas — "
         "indicaría match_id duplicados en algún lado."
+    )
+
+    # left: no todos los partidos tienen cuota de cierre cargada (ver
+    # futbol.features.odds) — esos quedan en NA, no se descartan filas.
+    df = df.merge(odds_feats, on="match_id", how="left")
+    assert len(df) == len(partido_feats), (
+        "build_model_dataset: el merge de cuotas cambió la cantidad de "
+        "filas — indicaría match_id duplicados en odds_feats."
     )
 
     orden = IDENTIFIER_COLUMNS + predictor_columns() + TARGET_COLUMNS

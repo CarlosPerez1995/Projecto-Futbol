@@ -10,16 +10,20 @@ Corrida real contra el dataset consolidado completo
 (`src/futbol/models/split.py`), un modelo Dixon-Coles independiente
 por cada `(league_code, season_code)` (`src/futbol/models/poisson_dixon_coles.py`).
 
-**Nota agregada el 11 nov:** tras cargar xG real a la BD (decisión de
-Carlos) y volver a medir XGBoost 1X2/binarios con esa feature nueva
-(ver `docs/xgb_1x2_resultados.md` y `docs/xgb_binary_resultados.md`),
-este modelo **no se vio afectado y sus resultados no cambian** — se
-ajusta directamente por máxima verosimilitud sobre los goles de cada
-liga/temporada (`fit_dixon_coles`), sin consumir
+**Nota agregada el 11 nov:** tras cargar xG real a la BD y, en una
+segunda ronda el mismo día, agregar las cuotas de mercado como feature
+(ambas decisiones de Carlos) y volver a medir XGBoost 1X2/binarios con
+esas features nuevas (ver `docs/xgb_1x2_resultados.md` y
+`docs/xgb_binary_resultados.md` — la ronda de cuotas sí logró que
+`over_1_5`/`over_2_5` cumplan el criterio del plan), este modelo **no
+se vio afectado por ninguna de las dos rondas y sus resultados no
+cambian** — se ajusta directamente por máxima verosimilitud sobre los
+goles de cada liga/temporada (`fit_dixon_coles`), sin consumir
 `futbol.features.dataset.predictor_columns()` ni ninguna feature de
-equipo. Si se quisiera que Dixon-Coles también aprovechara el xG,
-habría que extenderlo explícitamente (ej. como covariable del ataque
-esperado) — no se hizo, no estaba en el pedido de esta tarea.
+equipo ni de mercado. Si se quisiera que Dixon-Coles también
+aprovechara el xG o las cuotas, habría que extenderlo explícitamente
+(ej. como covariable del ataque esperado) — no se hizo, no estaba en
+el pedido de ninguna de las dos tareas.
 
 ## Evaluación en TEST (criterio de aceptación del plan: RPS < 0.25)
 

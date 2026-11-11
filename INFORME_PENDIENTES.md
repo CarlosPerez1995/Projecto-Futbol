@@ -5,43 +5,42 @@
 
 ## Bloqueante activo — decisión de Carlos
 
-**Cómo seguir en Fase 4, tras cargar xG y volver a medir (11 nov,
-resultado real reportado a Carlos)**: ya se cargó el xG real de
-Understat a la BD (`matches.home_xg`/`away_xg`) y se agregaron
-features de xG rodante por equipo (`xg_scored_avg_last5`,
-`xg_conceded_avg_last5`, mismo patrón sin fuga que las de goles) — era
-el candidato más directo para que los modelos superaran la línea
-base trivial. **Resultado real: no lo logra.** Comparación controlada
-(misma calibración antes/después, para no mezclar con un bug de
-calibración encontrado en el camino — ver `docs/xgb_binary_resultados.md`):
-el 1X2 mejora 0.003 en LogLoss (ruido), `over_2_5` mejora algo en AUC
-(+0.037) pero sigue sin cruzar el umbral del plan (>0.6), los otros
-dos no mejoran. El pipeline completo sigue funcionando correctamente
-— lo que falta no es un bug ni la ausencia de xG, es una señal
-predictiva más fuerte que un promedio de 5 partidos (de goles o de xG)
-por equipo.
+**Cómo seguir en Fase 4, tras dos rondas de re-medición el 11 nov**:
+primero se probó el xG (no alcanzó, ver abajo). Después, decisión de
+Carlos: probar las cuotas de mercado (probabilidad implícita de la
+cuota de cierre promedio, mercados 1x2 y over/under 2.5, ya cargados
+desde Fase 2) como feature predictora. **Resultado real: esta sí
+funciona.** El 1X2 le gana a la línea base trivial con margen real
+(LogLoss 1.037 vs. 1.078 trivial), y `over_1_5`/`over_2_5` cruzan por
+primera vez el criterio del plan (AUC > 0.6: 0.601 y 0.604). `btts`
+sigue sin funcionar — y de hecho empeora con las cuotas (AUC 0.453,
+peor que azar), porque no hay una cuota de mercado dedicada a BTTS en
+este dataset. Detalle completo en `docs/xgb_1x2_resultados.md` /
+`docs/xgb_binary_resultados.md`.
 
-**Camino pendiente de que Carlos decida, ahora con el xG ya
-descartado como solución fácil**:
-1. Seguir a Fase 5 (capa prescriptiva — decisiones de apuestas) de
-   todos modos, sabiendo las salvedades (ningún modelo demuestra edge
-   claro y consistente).
-2. Buscar otra señal predictiva más fuerte antes de seguir (ej.
-   alineaciones probables, lesiones, cuotas de mercado como feature —
-   las cuotas ya están en la BD desde Fase 2 pero no se usan como
-   predictoras todavía).
-3. Pausar Fase 4/5 del todo y reorientar el proyecto.
+**Camino pendiente de que Carlos decida, con la situación ya
+cambiada (2 de 3 modelos binarios con ventaja demostrada)**:
+1. Avanzar a Fase 5 (capa prescriptiva) con `1X2`, `over_1_5` y
+   `over_2_5`, excluyendo explícitamente `btts` hasta que tenga una
+   señal propia.
+2. Cargar también la cuota de mercado específica de BTTS (si
+   `soccerdata`/football-data.co.uk la tiene disponible) antes de
+   decidir sobre ese mercado puntual.
+3. Pausar Fase 4/5 del todo de todos modos, por otro motivo (decisión
+   de negocio, no técnica).
 
-Construir una capa de apuestas reales sobre modelos sin edge
-demostrado sería irresponsable, así que **Fase 5 sigue en pausa**
-hasta esta decisión — ver `PLAN_DE_TRABAJO.md`.
+**Fase 5 sigue en pausa** hasta esta decisión — ver
+`PLAN_DE_TRABAJO.md`.
 
 ## Resueltos recientemente
 
+- **Cuotas de mercado como feature, resultado real (11 nov)**:
+  decisión de Carlos, ejecutada y reportada — ver bloqueante arriba y
+  `docs/xgb_1x2_resultados.md` / `docs/xgb_binary_resultados.md`.
 - **xG cargado y re-medido (11 nov)**: decisión de Carlos, ejecutada y
-  reportada — ver bloqueante arriba y `docs/xgb_1x2_resultados.md` /
-  `docs/xgb_binary_resultados.md` para el detalle completo (incluye un
-  bug de calibración isotónica encontrado y corregido en el camino).
+  reportada — no alcanzó por sí solo (ver historial en los mismos
+  docs), pero de paso se encontró y corrigió un bug real de
+  calibración isotónica inestable.
 - **F9 (11 nov)**: Carlos autorizó instalar `scikit-learn`/`scipy`/
   `xgboost`/`joblib`, ya instaladas y congeladas en `requirements.txt`.
 - **Mercados de cuotas over/under 2.5 y hándicap asiático (10 nov)**:

@@ -311,33 +311,61 @@ números — ver el detalle completo, con el paso a paso de cómo se
 encontró el bug, en `docs/xgb_1x2_resultados.md` y
 `docs/xgb_binary_resultados.md`.
 
-Por esta razón, **no se sigue a la Fase 5 (la capa que decidiría
-apuestas con dinero real) todavía**: hacerlo sobre modelos sin ventaja
-demostrada sería irresponsable, y el candidato más directo para
-resolverlo (el xG) ya se probó y no alcanzó. Queda como decisión de
-Carlos cómo seguir: avanzar de todos modos sabiendo las salvedades,
-buscar otra señal predictiva (ej. usar las cuotas de las casas de
-apuestas, que ya están en la base de datos pero no se usan como
-entrada de los modelos), o pausar esta fase.
+Por esta razón, en ese momento **no se siguió a la Fase 5 todavía**:
+hacerlo sobre modelos sin ventaja demostrada habría sido
+irresponsable, y el candidato más directo para resolverlo (el xG) ya
+se había probado y no alcanzó. Quedó como decisión de Carlos cómo
+seguir: avanzar de todos modos sabiendo las salvedades, buscar otra
+señal predictiva, o pausar la fase.
+
+**Carlos decidió probar la señal que faltaba: las cuotas de las casas
+de apuestas, el mismo día.** Estas cuotas ya estaban en la base de
+datos desde Fase 2 (histórico completo de los 3 mercados), pero nunca
+se habían usado como entrada de ningún modelo — solo como dato de
+referencia. Se agregó una feature nueva: la probabilidad implícita de
+la cuota de **cierre** (justo antes de que el mercado deje de aceptar
+apuestas, sin margen de la casa) para el resultado del partido y para
+"más/menos de 2.5 goles", y se volvió a medir con la misma vara que
+todas las veces anteriores (misma calibración, misma línea base
+trivial). **Resultado real, esta vez sí: las cuotas funcionan.** El
+modelo de 1X2 pasa a tener una ventaja real sobre la trivial (antes la
+diferencia era de 0.003, ahora de 0.041 — mucho más que ruido); y los
+modelos de "más de 1.5 goles" y "más de 2.5 goles" cruzan, por primera
+vez en todo este proceso, el umbral que pedía el plan original. El
+único que sigue sin funcionar es "ambos equipos marcan" — y
+empeora con las cuotas, porque este dataset no tiene una cuota de
+mercado dedicada específicamente a ese mercado (solo a resultado y a
+total de goles), así que la señal nueva no le sirve a ese modelo en
+particular.
+
+Tiene sentido que las cuotas hayan funcionado donde el xG no alcanzó:
+las cuotas de mercado resumen, en un solo número, toda la información
+pública disponible justo antes del partido (lesiones, suspensiones,
+forma reciente, lo que piensan miles de apostadores) — algo que
+ningún promedio de partidos anteriores, por bueno que sea, puede
+reconstruir por sí solo.
 
 ## Dónde está el proyecto hoy (11 nov 2026)
 
 Fases 0 a 3 completas. Fase 4 con 4 de 5 tareas hechas (split temporal,
-los 3 modelos, ya re-medidos con xG) — el pipeline funciona de punta a
-punta, pero ninguno de los 3 modelos muestra todavía una ventaja clara
-sobre predecir la tasa histórica, ni siquiera con el xG agregado (ver
-el hallazgo de arriba). La base de datos tiene, con datos reales ya
-cargados: 5 ligas, 10 temporadas, 110 equipos, miles de partidos con
-su marcador y su xG real, más de 130.000 filas de cuotas históricas
-(los 3 mercados: 1x2, más/menos goles y hándicap asiático), la tabla
-de posiciones histórica, y el dataset de features.
+los 3 modelos, ya re-medidos dos veces: con xG y con cuotas de
+mercado) — el pipeline funciona de punta a punta y, con las cuotas
+incluidas, **3 de los 4 modelos (1X2, "más de 1.5 goles" y "más de
+2.5 goles") ya muestran una ventaja real sobre predecir la tasa
+histórica**; el cuarto ("ambos equipos marcan") sigue sin funcionar.
+La base de datos tiene, con datos reales ya cargados: 5 ligas, 10
+temporadas, 110 equipos, miles de partidos con su marcador y su xG
+real, más de 130.000 filas de cuotas históricas (los 3 mercados: 1x2,
+más/menos goles y hándicap asiático), la tabla de posiciones
+histórica, y el dataset de features.
 
 ## Lo que sigue
 
-Antes de nada más: con el xG ya probado y sin resolver el problema de
-fondo, Carlos tiene que decidir cómo seguir (ver
-`INFORME_PENDIENTES.md`). Después de eso: terminar **Fase 4** (falta
-el backtesting histórico, en pausa por el mismo motivo), **Fase 5**
-(la capa que decide cuánto apostar y cuándo, en pausa) y **Fase 6**
-(que todo el proceso corra solo todos los días). Detalle de cada paso
+Antes de nada más: con 3 de 4 modelos ya con ventaja demostrada,
+Carlos tiene que decidir cómo seguir (ver `INFORME_PENDIENTES.md`) —
+la situación es bien distinta a la de unas horas antes. Después de
+eso: terminar **Fase 4** (falta el backtesting histórico, en pausa
+hasta esa decisión), **Fase 5** (la capa que decide cuánto apostar y
+cuándo, en pausa) y **Fase 6** (que todo el proceso corra solo todos
+los días). Detalle de cada paso
 y el orden exacto: `PLAN_DE_TRABAJO.md`.

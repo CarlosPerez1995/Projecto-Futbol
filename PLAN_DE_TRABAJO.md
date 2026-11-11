@@ -28,42 +28,54 @@ cada uno construido sobre el anterior:
    ejemplo real (ratings que coinciden con los 3 descendidos reales de
    la Premier League 2024-25) en `docs/dixon_coles_resultados.md`.
 3. ~~**Modelo de clasificación 1X2** (XGBoost)~~ — **Hecho, re-medido
-   el 11 nov con xG**: `src/futbol/models/xgb_1x2.py`. LogLoss 1.073 en
-   test (calibración sigmoide, corregida — ver más abajo), vs. 1.078 de
-   la línea base trivial: mejora de 0.005, no significativa. Ver
-   `docs/xgb_1x2_resultados.md`. Cada versión del modelo se guarda con
-   sus métricas y el hash del dataset con que se entrenó
-   (`models/xgb_1x2/<version>/model.pkl` + `metrics.json`).
+   el 11 nov en dos rondas (xG, luego cuotas de mercado)**:
+   `src/futbol/models/xgb_1x2.py`. **Resultado final: LogLoss 1.037 en
+   test (calibración sigmoide, corregida — ver más abajo), le gana a la
+   trivial (1.078) con margen real** (0.041 — la ronda de solo xG daba
+   0.003, no significativa). Ver `docs/xgb_1x2_resultados.md`. Cada
+   versión del modelo se guarda con sus métricas y el hash del dataset
+   con que se entrenó (`models/xgb_1x2/<version>/model.pkl` +
+   `metrics.json`).
 4. ~~**Modelos de over/under y BTTS**~~ — **Hecho, re-medido el 11 nov
-   con xG**: `src/futbol/models/xgb_binary.py`. **Ningún AUC pasa de
-   0.56** (el plan pedía >0.6) — solo `over_2_5` le gana a la línea
-   base trivial en LogLoss, por un margen chico. Ver
-   `docs/xgb_binary_resultados.md`.
-5. **Backtesting histórico** — **en pausa**, no tiene sentido simular
-   rentabilidad de apuestas con modelos sin edge demostrado todavía
-   contra una línea base trivial (ver punto de decisión abajo).
-6. ~~**Cargar xG real y volver a medir**~~ — **Hecho (11 nov, decisión
-   de Carlos ejecutada)**: `home_xg`/`away_xg` reales cargados en
-   `matches` (`db/schema_v4.sql`, `load_xg`), features de xG rodante
-   por equipo agregadas (`xg_scored_avg_last5`/`xg_conceded_avg_last5`,
-   mismo patrón sin fuga que las de goles). **Resultado real: el xG no
-   cambia la conclusión** — mejora marginal en 1X2 y en `over_2_5`, sin
-   cambio o levemente peor en los otros dos mercados, ninguno cruza el
-   umbral del plan. Al remedir se encontró además un bug de calibración
+   en dos rondas**: `src/futbol/models/xgb_binary.py`. **Resultado
+   final: `over_1_5` (AUC 0.601) y `over_2_5` (AUC 0.604) cruzan por
+   primera vez el criterio del plan (>0.6)** y le ganan a la trivial
+   con margen real. `btts` sigue sin funcionar — empeora con las
+   cuotas (AUC 0.453, peor que azar), no tiene cuota de mercado
+   dedicada en este dataset. Ver `docs/xgb_binary_resultados.md`.
+5. **Backtesting histórico** — **en pausa**, pendiente de que Carlos
+   decida si se corre ya para `1X2`/`over_1_5`/`over_2_5` (que sí
+   tienen edge demostrado) excluyendo `btts`, o se espera más (ver
+   punto de decisión abajo).
+6. ~~**Cargar xG real y volver a medir**~~ — **Hecho (11 nov, primera
+   ronda, decisión de Carlos ejecutada)**: `home_xg`/`away_xg` reales
+   cargados en `matches` (`db/schema_v4.sql`, `load_xg`), features de
+   xG rodante por equipo agregadas (`xg_scored_avg_last5`/
+   `xg_conceded_avg_last5`, mismo patrón sin fuga que las de goles).
+   **Resultado real: el xG por sí solo no alcanzaba** — mejora marginal
+   en 1X2 y en `over_2_5`, sin cambio o levemente peor en los otros dos
+   mercados. Al remedir se encontró además un bug de calibración
    isotónica (corregido, pasó a sigmoide) — detalle completo en
    `docs/xgb_binary_resultados.md`.
+7. ~~**Cuotas de mercado como feature**~~ — **Hecho (11 nov, segunda
+   ronda, decisión de Carlos ejecutada)**: `src/futbol/features/odds.py`,
+   probabilidad implícita de la cuota de cierre promedio (mercados 1x2
+   y over/under 2.5, ya cargados en Fase 2). **Resultado real: esta sí
+   funciona** — ver puntos 3 y 4 arriba. Las 4 columnas de cuotas pasan
+   a ser, por lejos, las features más importantes del modelo 1X2 (~48%
+   de la importancia total).
 
-**Punto de decisión actualizado (11 nov) — el candidato más directo
-para mejorar ya se probó y no alcanzó**: con xG cargado, los 3 modelos
-XGBoost y el Dixon-Coles (no afectado por el xG, no lo consume) siguen
-sin mostrar una ventaja clara y consistente sobre simplemente conocer
-las tasas históricas. Opciones para Carlos: (1) seguir a Fase 5 de
-todos modos sabiendo las salvedades, (2) buscar otra señal predictiva
-más fuerte (ej. cuotas de mercado como feature, ya están en la BD
-desde Fase 2 pero no se usan como predictoras; alineaciones/lesiones),
-o (3) pausar Fase 4/5 del todo. **Fase 5 sigue en pausa hasta esta
-decisión** — construir una capa de apuestas reales sobre un modelo sin
-edge demostrado sería irresponsable.
+**Punto de decisión actualizado (11 nov, tras la ronda de cuotas) —
+la situación cambió de forma real**: `1X2`, `over_1_5` y `over_2_5`
+ya tienen una ventaja demostrada sobre la línea base trivial;
+`over_1_5`/`over_2_5` cumplen el criterio del plan (AUC>0.6). `btts`
+sigue sin funcionar, y el Dixon-Coles sigue sin verse afectado por
+ninguna de las dos rondas (no consume estas features). Opciones para
+Carlos: (1) avanzar a Fase 5 con los 3 modelos que sí funcionan,
+excluyendo `btts` explícitamente, (2) buscar una cuota de mercado
+específica de BTTS antes de decidir sobre ese mercado puntual, o (3)
+pausar Fase 4/5 del todo por otro motivo. **Fase 5 sigue en pausa
+hasta esta decisión.**
 
 ## Fase 5 — Capa prescriptiva
 
