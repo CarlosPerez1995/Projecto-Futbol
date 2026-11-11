@@ -22,7 +22,10 @@ predictoras de columnas objetivo, con `features_spec.md` versionado por
 hash). **Fase 4 (modelos predictivos) arrancada el 11 nov 2026** (F9
 autorizada por Carlos): `scikit-learn`/`scipy`/`xgboost`/`joblib`
 instalados y congelados en `requirements.txt`; 4.1 (split temporal,
-`src/futbol/models/split.py`) hecha — 4.2-4.5 pendientes.
+`src/futbol/models/split.py`) y 4.2 (Poisson/Dixon-Coles,
+`src/futbol/models/poisson_dixon_coles.py` — un modelo por liga/
+temporada, RPS < 0.25 en test en las 5 ligas, ver
+`docs/dixon_coles_resultados.md`) hechas — 4.3-4.5 pendientes.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -198,6 +201,24 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     así el overlap de fechas entre splits queda en cero garantizado,
     no solo "normalmente cero". `verificar_sin_overlap` es el chequeo
     explícito reusable (lanza `AssertionError` si hay overlap real).
+  - `src/futbol/models/poisson_dixon_coles.py` — modelo Poisson/
+    Dixon-Coles (tarea 4.2, Fase 4): `fit_dixon_coles` ajusta por MLE
+    (fórmulas verificadas contra Dixon & Coles 1997, no inventadas) un
+    modelo por `(league_code, season_code)` — nunca uno global, los
+    equipos de distinta liga no juegan entre sí en este dataset.
+    `DixonColesModel.match_outcome_probs` integra la conjunta de
+    marcadores para dar P(H)/P(D)/P(A); `rps`/`brier_score` son las
+    métricas de evaluación; `fit_and_evaluate_by_group` encadena todo
+    por grupo y deja `NaN` (no inventa) cuando un grupo no tiene
+    partidos de prueba — pasa de verdad con la temporada 2425 en este
+    dataset (cae entera en entrenamiento). **Importante sobre
+    rendimiento:** la verosimilitud está vectorizada con NumPy (sin
+    loop en Python por partido) — la primera versión con loop tardaba
+    minutos por ajuste, medido contra los datos reales; si se toca
+    esta función, no reintroducir un loop fila por fila. Resultados
+    completos y el ejemplo real (ratings de la Premier League 2024-25
+    coinciden con los 3 descendidos reales) en
+    `docs/dixon_coles_resultados.md`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

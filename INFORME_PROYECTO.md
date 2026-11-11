@@ -239,6 +239,28 @@ había cuidado con las features de equipo en fase 3). Verificado contra
 los 3.515 partidos reales: los tres grupos quedan en las proporciones
 exactas y sin ningún partido compartido entre grupos.
 
+**Segundo paso, el primer modelo de verdad**: el modelo Poisson/
+Dixon-Coles, un clásico del análisis de fútbol desde los años 90. La
+idea es simple de explicar aunque el cálculo detrás no lo sea: a cada
+equipo se le asigna un número que representa qué tan buen ataque tiene
+y otro qué tan buena defensa, usando solo los resultados reales de sus
+partidos — y con esos dos números se puede calcular la probabilidad de
+cualquier marcador entre dos equipos. Se entrenó un modelo separado
+por cada liga y temporada (los equipos de ligas distintas nunca juegan
+entre sí, no tendría sentido mezclarlos).
+
+**La mejor prueba de que funciona**: sin decirle nada sobre la tabla de
+posiciones, el modelo entrenado con los partidos de la Premier League
+2024-25 le da el mejor puntaje de ataque a Liverpool (el campeón real
+de esa temporada) y los tres peores puntajes a Southampton, Leicester
+City e Ipswich Town — exactamente los tres equipos que de verdad
+descendieron esa temporada. El modelo se mide con una métrica estándar
+del área (RPS — qué tan "cerca" estuvo la predicción del resultado
+real, no solo si acertó o no) contra partidos que nunca vio durante el
+entrenamiento: por debajo de 0.25 en las 5 ligas, que era la meta fijada
+desde el plan original. Detalle completo en
+`docs/dixon_coles_resultados.md`.
+
 ## Dónde está el proyecto hoy (11 nov 2026)
 
 Fases 0 a 3 completas, fase 4 arrancada. La base de datos tiene, con

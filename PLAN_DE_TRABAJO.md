@@ -18,9 +18,12 @@ cada uno construido sobre el anterior:
    entre splits incluso con partidos repetidos en la misma fecha/hora.
    Validado contra el dataset real: 2.461/528/526 filas, proporciones
    exactas, sin overlap.
-2. **Modelo Poisson/Dixon-Coles** — el modelo estadístico clásico para
-   fútbol: estima qué tan buen o mal equipo de ataque/defensa es cada
-   uno, y con eso calcula la probabilidad de cada marcador posible.
+2. ~~**Modelo Poisson/Dixon-Coles**~~ — **Hecho (11 nov)**:
+   `src/futbol/models/poisson_dixon_coles.py`, un modelo por liga y
+   temporada. RPS < 0.25 en test en las 5 ligas (criterio de
+   aceptación del plan cumplido) — detalle completo y el ejemplo real
+   (los ratings coinciden con los 3 equipos que realmente descendieron
+   de la Premier League 2024-25) en `docs/dixon_coles_resultados.md`.
 3. **Modelo de clasificación 1X2** (XGBoost) — quién gana, pierde o
    empata, usando las features de forma de la Fase 3 como entrada.
    Cada versión del modelo se guarda con sus métricas y la referencia
