@@ -26,7 +26,9 @@ antes de arrancar (regla 3 de AGENTS.md, pendiente de confirmar — F9).
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
 `INFORME_ARQUITECTURA.md` (diseño del sistema) y `PLAN_DE_TRABAJO.md`
-(qué sigue y en qué orden).
+(qué sigue y en qué orden). **OpenCode activado como operativo (10 nov)**,
+ver sección dedicada más abajo — primera tarea real delegada y verificada
+(mercados de cuotas over/under 2.5 y hándicap asiático).
 
 ## Entorno técnico
 - Python 3.x, entorno virtual en `.venv/`
@@ -235,30 +237,50 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
 - Scripts de procesamiento de datos — por crear
 - Esquema de base de datos — por definir
 
-## OpenCode como operativo (investigación 9 oct, no activado)
+## OpenCode como operativo (activado 10 nov 2026)
 
-Fútbol sigue en pausa (fase 2 bloqueada, ver hub). Esto es preparación para cuando
-se reactive, no una integración en uso.
+Decisión de Carlos: bajar el consumo de tokens de Claude Code delegando
+implementación rutinaria ya especificada (sin decisiones de diseño propias)
+a OpenCode. El jefe de proyecto sigue diseñando/decidiendo/verificando.
 
-- Ya instalado y logueado globalmente en `punky` (`opencode` v1.18.22, credenciales
-  de OpenRouter y NVIDIA NIM en `~/.local/share/opencode/auth.json`) — no hace falta
-  nada nuevo específico de este proyecto para tener el operativo disponible.
-- OpenCode lee `AGENTS.md` del repo automáticamente como contexto (igual que Claude
-  Code), así que este archivo ya le sirve sin trabajo adicional.
-- Asignación no interactiva: `opencode run "<tarea>" --dir <ruta-del-repo> --model
-  <provider/model> --agent <agent>`. NO usar `--auto` (aprueba permisos solo,
-  "dangerous") — las tareas deben pedir permiso igual que esta sesión, y el jefe de
-  proyecto revisa el diff antes de aceptar.
-- Permisos configurables por acción (`read`/`edit`/`bash`/...: `ask`/`allow`/`deny`)
-  en `opencode.jsonc` — mapear a los 3 niveles de `PROTOCOLO.md` del hub (libre /
-  con orden de Carlos / solo Carlos) cuando se le asigne una tarea real.
-- Modelos gratis de NVIDIA NIM/OpenRouter: varios registran o entrenan con los
-  prompts (ver `HERRAMIENTAS.md` del hub). Para fase 2 (esquema de BD, datos
-  públicos de fútbol) el riesgo es bajo; para fases 4-5 (modelos predictivos,
-  lógica de apuestas propia) revisar antes cuál modelo usar.
-- Para que no choque con el trabajo del jefe de proyecto en el mismo repo: que
-  OpenCode trabaje en su propia rama (`feature/opencode-<tarea>`) o un `git
-  worktree` separado, nunca directo sobre `desarrollo`.
+- Instalado y logueado globalmente en `punky` (`opencode` v1.18.22).
+  **Reconfigurado el 4 nov**: ya NO usa OpenRouter/NVIDIA NIM — Carlos los
+  quitó; proveedor único ahora es OpenCode Zen, modelo por defecto
+  `opencode/glm-5.3-flash-free` (gratis). Sin verificar todavía si este
+  modelo entrena con los prompts enviados — revisar antes de usarlo para
+  fases 4-5 (lógica de apuestas propia), igual precaución que se tenía
+  anotada para NVIDIA/OpenRouter.
+- OpenCode lee `AGENTS.md` del repo automáticamente como contexto (igual que
+  Claude Code).
+- Asignación no interactiva: `opencode run "<tarea>" --agent build`, corrido
+  desde dentro del repo (no hace falta `--dir` si ya estás parado ahí). NO
+  usar `--auto`. El spec de la tarea no se puede pasar como ruta fuera del
+  repo (`external_directory` se auto-rechaza en modo no interactivo) — copiar
+  el archivo de spec DENTRO del repo/worktree antes de invocar, borrarlo
+  después.
+- **Flujo real usado y verificado** (primera tarea: mercados de cuotas
+  over/under 2.5 y hándicap asiático, 10 nov): `git worktree add -b
+  feature/opencode-<tarea> ../<repo>-opencode-<tarea> desarrollo` (no rama
+  directo en el working dir del jefe, para no chocar); correr `opencode run`
+  ahí con el spec detallado en un archivo dentro del worktree; revisar
+  `git diff` completo; para correr los tests del worktree sin reinstalar el
+  paquete editable, usar `PYTHONPATH="<ruta-worktree>/src:$PYTHONPATH"` con
+  el python del venv del repo principal (el install editable apunta al repo
+  principal, no al worktree, y pisarlo rompería el propio trabajo del jefe);
+  validar a mano contra datos reales (`data/raw/` no está en el worktree,
+  gitignored — apuntar `raw_dir` al del repo principal); si todo cierra,
+  commitear en la rama del worktree, mergear `--ff-only` a `desarrollo` desde
+  el repo principal, pushear, y recién ahí `git worktree remove` + `git
+  branch -d`.
+- Permisos ya configurados globalmente en `~/.config/opencode/opencode.jsonc`
+  (`edit: allow`, `bash: ask`, `webfetch: ask`) — agente `build` es el
+  correcto para implementación (no `plan`/`explore`/etc.). No instruir tareas
+  que necesiten correr bash (pytest, git): con `bash: ask`, en modo no
+  interactivo esa aprobación no tiene quién la responda — no se probó qué
+  pasa exactamente (si se cuelga o se auto-rechaza, igual que sí se
+  confirmó para `external_directory`), así que mejor evitarlo: decirle
+  explícitamente que no corra bash, y que la verificación la hace el jefe
+  de proyecto después.
 
 ## Comandos útiles
 - Activar entorno: `source .venv/bin/activate`

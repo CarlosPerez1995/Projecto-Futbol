@@ -1,6 +1,6 @@
 # Informe del proyecto — Fútbol (análisis deportivo)
 
-*Última actualización: 26 oct 2026 (fase 3 completa). Pensado para leerse de corrido, sin
+*Última actualización: 10 nov 2026. Pensado para leerse de corrido, sin
 jerga técnica innecesaria — para el detalle técnico está `AGENTS.md` y
 la carpeta `docs/`. Este es el informe de **avance** (qué está hecho y
 funcionando); junto a él en la raíz del repo: `INFORME_PENDIENTES.md`
@@ -215,13 +215,26 @@ Verificado contra los datos reales: 3.515 partidos, 31 columnas en
 total (6 de identificación, 14 de forma de los equipos, 11 de
 resultado real).
 
-## Dónde está el proyecto hoy (26 oct 2026)
+## Un pendiente que se cerró de paso (10 nov 2026)
+
+Las cuotas de los mercados "más o menos goles" y "hándicap asiático"
+(los que habían quedado fuera al cerrar fase 2) ya se cargan también —
+quedó solo el mercado más simple (1x2) sin usar. Esta fue, además, la
+primera tarea real que se delegó a un segundo asistente (OpenCode,
+pensado para tareas rutinarias ya bien definidas, para no gastar tanto
+en el asistente principal): se le dio una especificación exacta de qué
+columnas usar y cómo, hizo el trabajo en su propia rama, y se verificó
+a mano contra los datos reales antes de incorporarlo — cada cuota
+coincide exactamente con el archivo original.
+
+## Dónde está el proyecto hoy (10 nov 2026)
 
 Fases 0 a 3 completas. La base de datos tiene, con datos reales ya
 cargados: 5 ligas, 10 temporadas, 110 equipos, miles de partidos con su
-marcador, decenas de miles de filas de cuotas históricas, la tabla de
-posiciones histórica, y ya el dataset de features listo para empezar a
-probar modelos.
+marcador, más de 130.000 filas de cuotas históricas (los 3 mercados:
+1x2, más/menos goles y hándicap asiático), la tabla de posiciones
+histórica, y ya el dataset de features listo para empezar a probar
+modelos.
 
 ## Lo que viene después de fase 3
 
