@@ -1,13 +1,16 @@
 # Pendientes del proyecto — Fútbol
 
-*Última actualización: 10 nov 2026. Complementa a `INFORME_PROYECTO.md`
+*Última actualización: 11 nov 2026. Complementa a `INFORME_PROYECTO.md`
 (qué está hecho) — acá va solo lo que falta y de quién depende.*
 
-## Bloqueante activo
+## Sin bloqueantes activos hoy
 
-| Qué | De quién depende | Detalle |
-|---|---|---|
-| **F9 — instalar `scikit-learn`/`scipy`/`xgboost`/`joblib`** | **Carlos** | Fase 4 (modelos predictivos) no puede arrancar sin esto — regla del proyecto: no se agregan dependencias nuevas sin aprobación previa (`AGENTS.md`, regla 3). Es la única cosa que está deteniendo el avance hoy. |
+**Resuelto (11 nov):** F9 — Carlos autorizó instalar
+`scikit-learn`/`scipy`/`xgboost`/`joblib`, ya instaladas y congeladas
+en `requirements.txt`. Fase 4 (modelos predictivos) arrancada, tarea
+4.1 (split temporal) hecha — ver `PLAN_DE_TRABAJO.md` para lo que sigue
+dentro de la fase (4.2-4.5, sin decisiones pendientes de Carlos en el
+camino inmediato).
 
 ## Alcance reducido a propósito (documentado, no bloquea nada)
 

@@ -1,29 +1,23 @@
 # Plan de trabajo — Fútbol
 
-*Última actualización: 4 nov 2026. Qué sigue y en qué orden, a partir
-de donde está hoy el proyecto (fases 0-3 completas, ver
-`INFORME_PROYECTO.md`). Basado en el plan arquitectónico original
+*Última actualización: 11 nov 2026. Qué sigue y en qué orden, a partir
+de donde está hoy el proyecto (fases 0-3 completas, fase 4 arrancada,
+ver `INFORME_PROYECTO.md`). Basado en el plan arquitectónico original
 (`~/Escritorio/AuditoriaFutbol/Planes arquitectonicos/`, fuera de este
 repo) ajustado con lo que realmente se construyó.*
 
-## Antes de arrancar: F9 (Carlos)
-
-Fase 4 necesita instalar `scikit-learn`, `scipy`, `xgboost` y `joblib`
-— ninguno está en `requirements.txt` hoy. Por la regla del proyecto de
-no agregar dependencias sin aprobación previa, esto se confirma una
-sola vez, idealmente los 4 juntos en vez de uno por tarea, antes de
-tocar código de Fase 4.
-
 ## Fase 4 — Modelos predictivos
 
-Depende de Fase 3 (hecha). Orden sugerido, cada uno construido sobre
-el anterior:
+Depende de Fase 3 (hecha). F9 (instalar `scikit-learn`/`scipy`/
+`xgboost`/`joblib`) ya autorizada y hecha el 11 nov. Orden sugerido,
+cada uno construido sobre el anterior:
 
-1. **Split temporal para backtesting** — dividir los partidos en
-   entrenamiento/validación/prueba por fecha (70/15/15), nunca
-   mezclado al azar (en series de tiempo, mezclar al azar es otra
-   forma de fuga de datos: dejaría al modelo "aprender" de partidos
-   futuros respecto a los que debe predecir).
+1. ~~**Split temporal para backtesting**~~ — **Hecho (11 nov)**:
+   `src/futbol/models/split.py`, 70/15/15 por fecha, nunca mezclado al
+   azar, con ajuste de corte para garantizar cero overlap de fechas
+   entre splits incluso con partidos repetidos en la misma fecha/hora.
+   Validado contra el dataset real: 2.461/528/526 filas, proporciones
+   exactas, sin overlap.
 2. **Modelo Poisson/Dixon-Coles** — el modelo estadístico clásico para
    fútbol: estima qué tan buen o mal equipo de ataque/defensa es cada
    uno, y con eso calcula la probabilidad de cada marcador posible.
@@ -78,8 +72,9 @@ Depende de Fase 5.
 ## Trabajo que se puede intercalar en cualquier momento, sin bloquear nada
 
 - Cargar xG de Understat a la BD (ver Fase 4, punto de decisión).
-- Sumar los mercados de cuotas over/under y hándicap asiático.
 - Limpiar la carpeta `~/Escritorio/proyectos` redundante.
 
-Ninguno de estos tres está bloqueando el avance de Fase 4 en adelante
-— se insertan donde convenga según prioridad de Carlos.
+Ninguno de estos dos está bloqueando el avance de Fase 4 en adelante —
+se insertan donde convenga según prioridad de Carlos. (Los mercados de
+cuotas over/under y hándicap asiático que estaban en esta lista ya se
+implementaron el 10 nov — ver `INFORME_PENDIENTES.md`.)

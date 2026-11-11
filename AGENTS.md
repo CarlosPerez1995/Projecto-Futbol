@@ -19,9 +19,10 @@ Carlos: 3.1 (features por partido), 3.2 (features por equipo, sin data
 leakage verificado con tests dedicados) y 3.3 (dataset consolidado,
 `src/futbol/features/dataset.py` — separa explícitamente columnas
 predictoras de columnas objetivo, con `features_spec.md` versionado por
-hash). Siguiente fase natural: Fase 4 (modelos predictivos), sin empezar —
-requiere aprobar instalación de `scikit-learn`/`scipy`/`xgboost`/`joblib`
-antes de arrancar (regla 3 de AGENTS.md, pendiente de confirmar — F9).
+hash). **Fase 4 (modelos predictivos) arrancada el 11 nov 2026** (F9
+autorizada por Carlos): `scikit-learn`/`scipy`/`xgboost`/`joblib`
+instalados y congelados en `requirements.txt`; 4.1 (split temporal,
+`src/futbol/models/split.py`) hecha — 4.2-4.5 pendientes.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -39,6 +40,12 @@ ver sección dedicada más abajo — primera tarea real delegada y verificada
 - `soccerdata` (fuente: https://github.com/probberechts/soccerdata)
 - `pandas`
 - `openpyxl` (necesario para exportar a `.xlsx`)
+- `scikit-learn`/`scipy`/`xgboost`/`joblib` (Fase 4, F9 autorizada por
+  Carlos 11 nov 2026). Nota: `xgboost==3.4.1` en Linux x86_64 instala
+  `nvidia-nccl-cu13` como dependencia declarada (~207 MB) aunque este
+  proyecto no usa GPU ni entrenamiento distribuido — confirmado que
+  `XGBClassifier` entrena y predice normal en CPU sin tocarla; es peso
+  del paquete, no una dependencia que haya que configurar.
 
 ## Reglas estrictas para el agente (anti-alucinación)
 
@@ -184,6 +191,13 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     `data/processed/model_dataset.csv` + `features_spec.md` (fecha y
     hash SHA-256 del CSV, para saber con qué versión exacta de
     features se entrenó cada modelo más adelante).
+  - `src/futbol/models/split.py` — split temporal (tarea 4.1, Fase 4):
+    `split_temporal` divide el dataset consolidado 70/15/15 por fecha
+    (nunca shuffle), ajustando el corte hacia adelante para no partir
+    un grupo de partidos con la misma fecha/hora entre dos splits —
+    así el overlap de fechas entre splits queda en cero garantizado,
+    no solo "normalmente cero". `verificar_sin_overlap` es el chequeo
+    explícito reusable (lanza `AssertionError` si hay overlap real).
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

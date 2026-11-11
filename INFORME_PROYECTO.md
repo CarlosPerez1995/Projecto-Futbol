@@ -1,6 +1,6 @@
 # Informe del proyecto — Fútbol (análisis deportivo)
 
-*Última actualización: 10 nov 2026. Pensado para leerse de corrido, sin
+*Última actualización: 11 nov 2026. Pensado para leerse de corrido, sin
 jerga técnica innecesaria — para el detalle técnico está `AGENTS.md` y
 la carpeta `docs/`. Este es el informe de **avance** (qué está hecho y
 funcionando); junto a él en la raíz del repo: `INFORME_PENDIENTES.md`
@@ -227,21 +227,32 @@ columnas usar y cómo, hizo el trabajo en su propia rama, y se verificó
 a mano contra los datos reales antes de incorporarlo — cada cuota
 coincide exactamente con el archivo original.
 
-## Dónde está el proyecto hoy (10 nov 2026)
+## Fase 4 — Modelos predictivos (arrancada 11 nov 2026)
 
-Fases 0 a 3 completas. La base de datos tiene, con datos reales ya
-cargados: 5 ligas, 10 temporadas, 110 equipos, miles de partidos con su
-marcador, más de 130.000 filas de cuotas históricas (los 3 mercados:
-1x2, más/menos goles y hándicap asiático), la tabla de posiciones
-histórica, y ya el dataset de features listo para empezar a probar
-modelos.
+Carlos autorizó instalar las 4 librerías que hacían falta
+(`scikit-learn`, `scipy`, `xgboost`, `joblib`) y se arrancó. Primer
+paso: dividir los partidos en tres grupos por fecha —70% para entrenar
+el modelo, 15% para ajustarlo, 15% para probarlo al final— sin
+mezclarlos al azar (si se mezclaran, el modelo terminaría "viendo" de
+antemano partidos que después tiene que adivinar, lo mismo que ya se
+había cuidado con las features de equipo en fase 3). Verificado contra
+los 3.515 partidos reales: los tres grupos quedan en las proporciones
+exactas y sin ningún partido compartido entre grupos.
 
-## Lo que viene después de fase 3
+## Dónde está el proyecto hoy (11 nov 2026)
 
-Según el plan original: **Fase 4** (modelos predictivos — estadísticos
-y de machine learning; requiere aprobar la instalación de algunas
-librerías nuevas antes de arrancar), **Fase 5** (la capa que decide
-cuánto apostar y cuándo, con gestión de riesgo), y **Fase 6** (que todo
-el proceso corra solo todos los días, sin intervención manual). Detalle
-de cada paso y el orden exacto: `PLAN_DE_TRABAJO.md`. Qué falta y de
+Fases 0 a 3 completas, fase 4 arrancada. La base de datos tiene, con
+datos reales ya cargados: 5 ligas, 10 temporadas, 110 equipos, miles de
+partidos con su marcador, más de 130.000 filas de cuotas históricas
+(los 3 mercados: 1x2, más/menos goles y hándicap asiático), la tabla de
+posiciones histórica, el dataset de features, y ya el primer paso de
+modelado (split temporal) listo.
+
+## Lo que sigue
+
+Terminar **Fase 4** (los modelos predictivos propiamente dichos —
+estadístico y de machine learning), después **Fase 5** (la capa que
+decide cuánto apostar y cuándo, con gestión de riesgo), y **Fase 6**
+(que todo el proceso corra solo todos los días, sin intervención
+manual). Detalle de cada paso y el orden exacto: `PLAN_DE_TRABAJO.md`. Qué falta y de
 quién depende: `INFORME_PENDIENTES.md`.
