@@ -61,10 +61,17 @@ def calibrate_binary_model(
 ) -> CalibratedClassifierCV:
     """Calibra con ``val_df`` (nunca ``train_df``) — mismo motivo que
     en 1X2: calibrar con los datos que ya vio el modelo al ajustarse
-    da una calibración artificialmente optimista."""
+    da una calibración artificialmente optimista.
+
+    ``method="sigmoid"``, no isotónica: mismo hallazgo y mismo motivo
+    que en ``xgb_1x2.calibrate_xgb_1x2`` (ver su docstring) — con
+    ``val`` de ~528 filas, la isotónica llegó a asignar probabilidad
+    0.0 a la clase verdadera en varios partidos de test (confirmado en
+    ``over_1_5`` y ``btts``), lo que arruina el LogLoss sin que el
+    modelo haya cambiado."""
     X_val = _features(val_df)
     y_val = val_df[target_col].astype(int).to_numpy()
-    calibrado = CalibratedClassifierCV(FrozenEstimator(modelo_base), method="isotonic")
+    calibrado = CalibratedClassifierCV(FrozenEstimator(modelo_base), method="sigmoid")
     calibrado.fit(X_val, y_val)
     return calibrado
 

@@ -5,35 +5,43 @@
 
 ## Bloqueante activo — decisión de Carlos
 
-**Cómo seguir en Fase 4, tras un hallazgo real del 11 nov**: los 3
-modelos predictivos entrenados hasta ahora (Poisson/Dixon-Coles,
-clasificación 1X2 y over/under/BTTS con XGBoost) no muestran una
-ventaja clara y consistente por encima de una línea base trivial
-(predecir siempre la tasa histórica). El código y el pipeline
-funcionan correctamente (verificado con tests y a mano) — es la señal
-de las features actuales la que no alcanza todavía, no un bug.
-Detalle completo en `docs/xgb_binary_resultados.md`.
+**Cómo seguir en Fase 4, tras cargar xG y volver a medir (11 nov,
+resultado real reportado a Carlos)**: ya se cargó el xG real de
+Understat a la BD (`matches.home_xg`/`away_xg`) y se agregaron
+features de xG rodante por equipo (`xg_scored_avg_last5`,
+`xg_conceded_avg_last5`, mismo patrón sin fuga que las de goles) — era
+el candidato más directo para que los modelos superaran la línea
+base trivial. **Resultado real: no lo logra.** Comparación controlada
+(misma calibración antes/después, para no mezclar con un bug de
+calibración encontrado en el camino — ver `docs/xgb_binary_resultados.md`):
+el 1X2 mejora 0.003 en LogLoss (ruido), `over_2_5` mejora algo en AUC
+(+0.037) pero sigue sin cruzar el umbral del plan (>0.6), los otros
+dos no mejoran. El pipeline completo sigue funcionando correctamente
+— lo que falta no es un bug ni la ausencia de xG, es una señal
+predictiva más fuerte que un promedio de 5 partidos (de goles o de xG)
+por equipo.
 
-**Dos caminos, pendientes de que Carlos decida**:
-1. Cargar xG (gol esperado) de Understat a la base de datos antes de
-   seguir — candidato más directo para mejorar esto, especialmente
-   para over/under y BTTS (ver fila de abajo, este trabajo ya estaba
-   identificado, ahora tiene más urgencia).
-2. Seguir a Fase 5 (capa prescriptiva — decisiones de apuestas) de
-   todos modos, sabiendo las salvedades.
+**Camino pendiente de que Carlos decida, ahora con el xG ya
+descartado como solución fácil**:
+1. Seguir a Fase 5 (capa prescriptiva — decisiones de apuestas) de
+   todos modos, sabiendo las salvedades (ningún modelo demuestra edge
+   claro y consistente).
+2. Buscar otra señal predictiva más fuerte antes de seguir (ej.
+   alineaciones probables, lesiones, cuotas de mercado como feature —
+   las cuotas ya están en la BD desde Fase 2 pero no se usan como
+   predictoras todavía).
+3. Pausar Fase 4/5 del todo y reorientar el proyecto.
 
 Construir una capa de apuestas reales sobre modelos sin edge
-demostrado sería irresponsable, así que **Fase 5 queda en pausa**
+demostrado sería irresponsable, así que **Fase 5 sigue en pausa**
 hasta esta decisión — ver `PLAN_DE_TRABAJO.md`.
-
-## Trabajo recomendado (ya no "cuando convenga")
-
-| Qué | De quién depende | Detalle |
-|---|---|---|
-| Cargar xG (gol esperado, de Understat) a la base de datos | Jefe de proyecto, con la prioridad que le dé Carlos (ver bloqueante de arriba) | Understat ya se usa para identidad de equipos/partidos, pero sus columnas de xG nunca se cargaron a la BD. Las features de partido (`home_xg`/`away_xg`) están ahí pero vacías, documentado en `docs/features_map.txt`. Deja de ser un "nice to have": es el candidato más directo para que los modelos de Fase 4 superen la línea base trivial. |
 
 ## Resueltos recientemente
 
+- **xG cargado y re-medido (11 nov)**: decisión de Carlos, ejecutada y
+  reportada — ver bloqueante arriba y `docs/xgb_1x2_resultados.md` /
+  `docs/xgb_binary_resultados.md` para el detalle completo (incluye un
+  bug de calibración isotónica encontrado y corregido en el camino).
 - **F9 (11 nov)**: Carlos autorizó instalar `scikit-learn`/`scipy`/
   `xgboost`/`joblib`, ya instaladas y congeladas en `requirements.txt`.
 - **Mercados de cuotas over/under 2.5 y hándicap asiático (10 nov)**:

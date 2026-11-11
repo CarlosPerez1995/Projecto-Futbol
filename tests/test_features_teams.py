@@ -14,7 +14,7 @@ import pytest
 from futbol.db.database import get_connection, init_db
 from futbol.features.teams import compute_team_features
 
-REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v3.sql"
+REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v4.sql"
 
 
 @pytest.fixture
@@ -44,12 +44,12 @@ def _team_id(conn, nombre: str) -> int:
     ).fetchone()[0]
 
 
-def _insert_played(conn, match_date, home, away, home_score, away_score):
+def _insert_played(conn, match_date, home, away, home_score, away_score, home_xg=None, away_xg=None):
     season_id = _season_id(conn)
     conn.execute(
         "INSERT INTO matches (season_id, home_team_id, away_team_id, match_date, "
-        "home_score, away_score, status) VALUES (?, ?, ?, ?, ?, ?, 'played')",
-        (season_id, _team_id(conn, home), _team_id(conn, away), match_date, home_score, away_score),
+        "home_score, away_score, home_xg, away_xg, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'played')",
+        (season_id, _team_id(conn, home), _team_id(conn, away), match_date, home_score, away_score, home_xg, away_xg),
     )
     conn.commit()
 
@@ -132,6 +132,38 @@ def test_equipos_distintos_no_se_contaminan_entre_si(escenario_3_partidos):
     segundo = df[df["match_date"] == "2024-08-08 15:00:00"].iloc[0]
     assert segundo["home_team"] == "Team B"
     assert segundo["matches_played_before_home"] == 0  # Team B, primer partido
+
+
+def test_features_de_xg_del_tercer_partido_no_usan_su_propio_xg(conn):
+    """Mismo escenario que test_features_del_tercer_partido_no_usan_su_propio_marcador,
+    pero para xG: el partido 3 trae xG propio (1.10 a favor / 2.20 en
+    contra para Team A) que NO debe entrar en su propio promedio."""
+    _insert_played(conn, "2024-08-01 15:00:00", "Team A", "Team C", 2, 0, home_xg=1.80, away_xg=0.30)
+    _insert_played(conn, "2024-08-08 15:00:00", "Team B", "Team A", 1, 1, home_xg=0.90, away_xg=1.20)
+    _insert_played(conn, "2024-08-15 15:00:00", "Team A", "Team B", 0, 3, home_xg=1.10, away_xg=2.20)
+
+    df = compute_team_features(conn)
+
+    tercero = df[df["match_date"] == "2024-08-15 15:00:00"].iloc[0]
+    assert tercero["home_team"] == "Team A"
+    # xG a favor de Team A en partidos 1 y 2: 1.80, 1.20 -> promedio 1.50
+    assert tercero["xg_scored_avg_last5_home"] == pytest.approx((1.80 + 1.20) / 2)
+    # xG en contra de Team A en partidos 1 y 2: 0.30, 0.90 -> promedio 0.60
+    assert tercero["xg_conceded_avg_last5_home"] == pytest.approx((0.30 + 0.90) / 2)
+
+
+def test_features_de_xg_sin_cargar_quedan_en_na(conn):
+    """Si ningún partido previo de un equipo tiene xG cargado (ej. no
+    estaba en la corrida de Understat), la feature rodante debe quedar
+    en NA — no inventar un 0."""
+    _insert_played(conn, "2024-08-01 15:00:00", "Team A", "Team C", 2, 0)
+    _insert_played(conn, "2024-08-08 15:00:00", "Team A", "Team B", 1, 1)
+
+    df = compute_team_features(conn)
+
+    segundo = df[df["match_date"] == "2024-08-08 15:00:00"].iloc[0]
+    assert pd.isna(segundo["xg_scored_avg_last5_home"])
+    assert pd.isna(segundo["xg_conceded_avg_last5_home"])
 
 
 def test_racha_se_extiende_con_resultados_consecutivos_iguales(conn):

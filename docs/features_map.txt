@@ -28,18 +28,14 @@ Columnas calculadas:
   btts             = home_score > 0 AND away_score > 0
                       ("both teams to score")
 
-Columnas pendientes de fuente (no calculadas todavía):
-  home_xg, away_xg - gol esperado (Expected Goals). Understat SÍ trae
-                      este dato (home_xg/away_xg en
-                      understat_team_match_stats_*.csv), pero en Fase 2
-                      Understat solo se usó para resolver identidad de
-                      equipos/partidos (home_team_id/away_team_id en
-                      load_data.py), no se cargaron sus métricas de xG
-                      a la BD. Por eso estas dos columnas quedan vacías
-                      (NA) por ahora — no es un dato perdido, es una
-                      decisión de alcance para esta tarea. Cargar xG a
-                      la BD es trabajo pendiente (de Fase 2, no de esta
-                      tarea de Fase 3) antes de poder llenarlas.
+Columnas de xG (cargadas el 11 nov, decisión de Carlos):
+  home_xg, away_xg - gol esperado (Expected Goals), real, desde
+                      understat_team_match_stats_*.csv vía
+                      db/schema_v4.sql + load_data.py::load_xg().
+                      Upsert real (como home_score/away_score), no
+                      histórico. NA solo para el partido puntual sin
+                      xG cargado (ej. no estaba en esa corrida de
+                      Understat), ya no universalmente.
 
 
 Columnas de forma por equipo (tarea 3.2) — mismo dataset, sufijo _home/_away
@@ -70,3 +66,8 @@ partido de un equipo en toda la BD no tiene historia y queda en blanco
   matches_played_before_{home,away}     - cuántos partidos previos tenía
                                            el equipo (0 = su primer
                                            partido en la BD, sin historia)
+  xg_scored_avg_last5_{home,away}       - agregado el 11 nov: promedio
+                                           de xG a favor en esos mismos
+                                           partidos anteriores (mismo
+                                           patrón sin fuga que goals_*)
+  xg_conceded_avg_last5_{home,away}     - idem, xG en contra

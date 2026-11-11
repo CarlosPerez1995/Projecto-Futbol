@@ -19,6 +19,18 @@ igual que pedía la tarea 13 del Excel original. Un equipo con menos de
 5 partidos previos usa los que tenga (``min_periods=1``); su primer
 partido de todos no tiene historia y queda en blanco (``NA``) a
 propósito, no es un error.
+
+Features de xG (``xg_scored_avg_last5``/``xg_conceded_avg_last5``,
+agregadas el 11 nov) — decisión de Carlos para volver a medir los
+modelos de Fase 4, que no mostraron ventaja clara sobre una línea base
+trivial (ver ``docs/xgb_binary_resultados.md``): mismo patrón
+``shift(1)`` + ``rolling`` que las de goles reales, calculadas sobre
+el xG del propio equipo en sus partidos anteriores — nunca el xG del
+partido en curso. Un equipo sin xG cargado en alguno de sus partidos
+previos (``home_xg``/``away_xg`` de la BD en ``NA``, ver
+``futbol.features.matches``) simplemente promedia sobre los que sí
+tenga, igual que ya hace ``rolling`` con los partidos faltantes por
+ventana corta.
 """
 from __future__ import annotations
 
@@ -38,6 +50,8 @@ _FEATURE_COLUMNS = [
     "current_streak_length",
     "current_streak_result",
     "matches_played_before",
+    "xg_scored_avg_last5",
+    "xg_conceded_avg_last5",
 ]
 
 
@@ -55,16 +69,20 @@ def _team_centric_matches(conn: sqlite3.Connection) -> pd.DataFrame:
     """
     df = pd.read_sql_query(_QUERY_MATCHES_JUGADOS, conn)
 
+    cols = ["match_id", "match_date", "team", "opponent", "goals_for", "goals_against", "xg_for", "xg_against"]
+
     local = df.rename(columns={
         "home_team": "team", "away_team": "opponent",
         "home_score": "goals_for", "away_score": "goals_against",
-    })[["match_id", "match_date", "team", "opponent", "goals_for", "goals_against"]].copy()
+        "home_xg": "xg_for", "away_xg": "xg_against",
+    })[cols].copy()
     local["is_home"] = True
 
     visitante = df.rename(columns={
         "away_team": "team", "home_team": "opponent",
         "away_score": "goals_for", "home_score": "goals_against",
-    })[["match_id", "match_date", "team", "opponent", "goals_for", "goals_against"]].copy()
+        "away_xg": "xg_for", "home_xg": "xg_against",
+    })[cols].copy()
     visitante["is_home"] = False
 
     equipo_partido = pd.concat([local, visitante], ignore_index=True)
@@ -86,10 +104,14 @@ def _features_de_un_equipo(g: pd.DataFrame, window: int = _ROLLING_WINDOW) -> pd
     goles_recibidos_previos = g["goals_against"].shift(1)
     puntos_previos = g["points_for_team"].shift(1)
     resultado_previo = g["result_for_team"].shift(1)
+    xg_previo = g["xg_for"].shift(1)
+    xg_recibido_previo = g["xg_against"].shift(1)
 
     g["goals_scored_avg_last5"] = goles_previos.rolling(window, min_periods=1).mean()
     g["goals_conceded_avg_last5"] = goles_recibidos_previos.rolling(window, min_periods=1).mean()
     g["form_points_avg_last5"] = puntos_previos.rolling(window, min_periods=1).mean()
+    g["xg_scored_avg_last5"] = xg_previo.rolling(window, min_periods=1).mean()
+    g["xg_conceded_avg_last5"] = xg_recibido_previo.rolling(window, min_periods=1).mean()
 
     vallas_invictas_previas = (goles_recibidos_previos == 0).astype(float)
     vallas_invictas_previas[goles_recibidos_previos.isna()] = pd.NA

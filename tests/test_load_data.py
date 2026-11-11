@@ -26,13 +26,14 @@ from futbol.db.load_data import (
     load_odds_extra_markets,
     load_seasons,
     load_team_aliases,
+    load_xg,
     resolve_or_create_match,
     resolve_team,
     upsert_match_result,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REPO_SCHEMA_PATH = REPO_ROOT / "db" / "schema_v3.sql"
+REPO_SCHEMA_PATH = REPO_ROOT / "db" / "schema_v4.sql"
 REPO_TEAM_ALIASES_PATH = REPO_ROOT / "config" / "team_aliases.json"
 
 _TEST_ALIASES = {
@@ -302,8 +303,8 @@ def raw_dir_con_4_fuentes(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (raw_dir / "understat" / "understat_team_match_stats_20260101_000000.csv").write_text(
-        "league,season,game,home_team_id,away_team_id,date,home_team,away_team\n"
-        "TEST-League,2024,2024-08-16 Team A-Team B,10,20,2024-08-16 19:00:00,Team A,Team B\n",
+        "league,season,game,home_team_id,away_team_id,date,home_team,away_team,home_xg,away_xg\n"
+        "TEST-League,2024,2024-08-16 Team A-Team B,10,20,2024-08-16 19:00:00,Team A,Team B,1.45,0.62\n",
         encoding="utf-8",
     )
     (raw_dir / "match_history" / "match_history_20260101_000000.csv").write_text(
@@ -680,3 +681,75 @@ def test_load_odds_extra_markets_guarda_ambos_mercados_y_es_idempotente(
     n_2 = load_odds_extra_markets(conn, raw_dir_con_4_fuentes)
     assert n_2 == {"over_under_2.5": 2, "asian_handicap": 2}
     assert conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0] == 4
+
+
+# ---------------------------------------------------------------------------
+# load_xg
+# ---------------------------------------------------------------------------
+
+def test_load_xg_actualiza_home_xg_away_xg(conn, raw_dir_con_4_fuentes):
+    load_leagues(conn, raw_dir_con_4_fuentes)
+    load_seasons(conn, raw_dir_con_4_fuentes)
+    load_matches(conn, _TEST_ALIASES, raw_dir_con_4_fuentes)
+
+    n = load_xg(conn, raw_dir_con_4_fuentes)
+
+    assert n == 1
+    fila = conn.execute("SELECT home_xg, away_xg FROM matches").fetchone()
+    assert fila == (1.45, 0.62)
+
+
+def test_load_xg_es_upsert_real_no_historico(conn, raw_dir_con_4_fuentes):
+    """A diferencia de odds/fixtures, el xG se sobrescribe — no se
+    guarda historial (es un hecho fijo de un partido ya jugado)."""
+    load_leagues(conn, raw_dir_con_4_fuentes)
+    load_seasons(conn, raw_dir_con_4_fuentes)
+    load_matches(conn, _TEST_ALIASES, raw_dir_con_4_fuentes)
+    load_xg(conn, raw_dir_con_4_fuentes)
+
+    # una corrida "corregida" con otro valor de xG para el mismo partido
+    corregido = raw_dir_con_4_fuentes / "understat" / "understat_team_match_stats_20260215_000000.csv"
+    corregido.write_text(
+        (raw_dir_con_4_fuentes / "understat" / "understat_team_match_stats_20260101_000000.csv")
+        .read_text(encoding="utf-8")
+        .replace("1.45,0.62", "1.80,0.40"),
+        encoding="utf-8",
+    )
+    load_xg(conn, raw_dir_con_4_fuentes)
+
+    assert conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 1  # no duplica filas
+    fila = conn.execute("SELECT home_xg, away_xg FROM matches").fetchone()
+    assert fila == (1.80, 0.40)  # quedó el valor más reciente, no el primero
+
+
+def test_load_xg_sin_columnas_de_xg_no_rompe(conn, tmp_path: Path):
+    """Un CSV de Understat sin home_xg/away_xg (ej. de antes de esta
+    tarea) no debe romper nada — simplemente no hay nada que cargar."""
+    raw_dir = tmp_path / "raw_sin_xg"
+    (raw_dir / "sofascore").mkdir(parents=True)
+    (raw_dir / "understat").mkdir(parents=True)
+    (raw_dir / "sofascore" / "leagues_20260101_000000.csv").write_text(
+        "league,league_id,region\nTEST-League,1,TST\n", encoding="utf-8"
+    )
+    (raw_dir / "sofascore" / "seasons_20260101_000000.csv").write_text(
+        "league,season,league_id,season_id\nTEST-League,2024,1,1\n", encoding="utf-8"
+    )
+    (raw_dir / "sofascore" / "schedule_20260101_000000.csv").write_text(
+        "league,season,game,date,home_team,away_team,home_score,away_score,game_id\n"
+        "TEST-League,2024,2024-08-16 Team A-Team B,2024-08-16 19:00:00,Team A,Team B,,,999\n",
+        encoding="utf-8",
+    )
+    (raw_dir / "understat" / "understat_team_match_stats_20260101_000000.csv").write_text(
+        "league,season,game,home_team_id,away_team_id,date,home_team,away_team\n"
+        "TEST-League,2024,2024-08-16 Team A-Team B,10,20,2024-08-16 19:00:00,Team A,Team B\n",
+        encoding="utf-8",
+    )
+    load_leagues(conn, raw_dir)
+    load_seasons(conn, raw_dir)
+    load_matches(conn, _TEST_ALIASES, raw_dir)
+
+    n = load_xg(conn, raw_dir)
+
+    assert n == 0
+    fila = conn.execute("SELECT home_xg, away_xg FROM matches").fetchone()
+    assert fila == (None, None)

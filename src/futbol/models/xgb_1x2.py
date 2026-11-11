@@ -120,10 +120,23 @@ def calibrate_xgb_1x2(
     label_encoder: LabelEncoder,
 ) -> CalibratedClassifierCV:
     """Calibra ``modelo_base`` (ya ajustado con ``train``) con
-    regresión isotónica usando ``val_df`` — nunca ``train_df``."""
+    regresión sigmoide (Platt) usando ``val_df`` — nunca ``train_df``.
+
+    Antes usaba ``method="isotonic"`` (según el plan original); se
+    cambió el 11 nov al re-medir con la feature de xG, al encontrar que
+    la isotónica asigna probabilidad exacta 0.0 a la clase verdadera en
+    varios partidos de test (confirmado a mano: 5 de 526), lo que dispara
+    el LogLoss a valores absurdos (1.41 vs 1.08 sin ese artefacto) por el
+    recorte numérico de ``log_loss`` cerca de 0 — no es una mejora real
+    del modelo, es una falla de calibración. Causa: ``val`` tiene ~528
+    filas repartidas en 3 clases one-vs-rest, insuficiente para que la
+    regresión isotónica (no paramétrica) generalice bien en los
+    extremos; la sigmoide (2 parámetros) es mucho más robusta con este
+    tamaño de muestra. Verificado comparando las 3 variantes (sin
+    calibrar / isotónica / sigmoide) antes de decidir el cambio."""
     X_val = _features(val_df)
     y_val = label_encoder.transform(val_df["result_1x2"])
-    calibrado = CalibratedClassifierCV(FrozenEstimator(modelo_base), method="isotonic")
+    calibrado = CalibratedClassifierCV(FrozenEstimator(modelo_base), method="sigmoid")
     calibrado.fit(X_val, y_val)
     return calibrado
 

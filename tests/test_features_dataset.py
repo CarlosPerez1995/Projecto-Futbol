@@ -16,7 +16,7 @@ from futbol.features.dataset import (
     write_features_spec,
 )
 
-REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v3.sql"
+REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v4.sql"
 
 
 @pytest.fixture

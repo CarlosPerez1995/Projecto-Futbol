@@ -183,9 +183,8 @@ en tres pasos, cada uno construido sobre el anterior:
    terminó — total de goles, diferencia, quién ganó (o si fue empate),
    si se pasó de determinados umbrales de goles (más de 1.5, 2.5 o 3.5
    en total), y si ambos equipos marcaron. El dato de "gol esperado"
-   (xG) de Understat quedó pendiente a propósito — se tiene la fuente,
-   pero cargarla a la base de datos es trabajo que quedó fuera del
-   alcance de esta vuelta, documentado para no perderlo de vista.
+   (xG) de Understat quedó pendiente a propósito en esta vuelta — se
+   cargó después, el 11 nov, ver la sección de Fase 4 más abajo.
 
 2. **Features de forma de cada equipo**: esta es la parte más delicada
    de toda la fase, porque acá es muy fácil cometer un error sutil que
@@ -278,35 +277,67 @@ ningún modelo— ninguno de los tres (ni el Poisson/Dixon-Coles, ni el
 XGBoost de 1X2, ni el de más/menos goles y ambos marcan) le gana con
 claridad y consistencia a esa comparación trivial. El código funciona
 bien de punta a punta (probado, verificado a mano), pero las features
-que se tienen hoy —sobre todo promedios de goles de los últimos 5
-partidos— no alcanzan todavía para predecir mejor que "lo de siempre".
-El candidato más directo para mejorar esto es cargar el xG (gol
-esperado) de Understat a la base de datos, algo que ya estaba
-identificado como pendiente desde la Fase 3 pero sin urgencia — ahora
-la tiene. Por esta razón, **no se sigue a la Fase 5 (la capa que
-decidiría apuestas con dinero real) todavía**: hacerlo sobre modelos
-sin ventaja demostrada sería irresponsable. Queda como decisión de
-Carlos cómo seguir. Detalle completo, sin maquillar el número, en
-`docs/xgb_1x2_resultados.md`, `docs/xgb_binary_resultados.md` y la
-corrección agregada en `docs/dixon_coles_resultados.md`.
+que se tenían hasta ese momento —sobre todo promedios de goles de los
+últimos 5 partidos— no alcanzaban todavía para predecir mejor que "lo
+de siempre".
+
+**Carlos decidió (11 nov) probar el candidato más directo: cargar el
+xG (gol esperado) real de Understat a la base de datos y agregarlo
+como feature de forma del equipo (promedio de xG de los últimos 5
+partidos, igual que ya se hacía con los goles), y volver a medir los
+3 modelos. Resultado real, sin maquillar: el xG no cambia la
+conclusión.** Comparando con la misma vara (misma calibración antes y
+después, para no mezclar con un bug de calibración que se encontró y
+corrigió en el camino, ver más abajo): el modelo de 1X2 mejora apenas
+(0.003 en LogLoss, dentro del ruido); el de "más/menos de 2.5 goles"
+mejora algo más (su AUC pasa de 0.52 a 0.56) y es el único que logra
+ganarle a la comparación trivial, aunque por un margen chico; los
+otros dos (más/menos de 1.5 goles, y ambos equipos marcan) no mejoran,
+incluso empeoran levemente. Ninguno de los tres cruza el umbral que
+pedía el plan original (AUC > 0.6). El Poisson/Dixon-Coles no usa
+estas features de equipo (se calcula distinto, por liga) y no se vio
+afectado.
+
+Al volver a medir se encontró, además, un problema real en el código
+de calibración de probabilidades (no relacionado con el xG): el método
+que se usaba (calibración "isotónica") resultó inestable con la
+cantidad de datos de validación disponible (~528 partidos) — en
+algunos casos llegaba a asignarle probabilidad cero a lo que
+realmente pasó, lo que arruinaba la métrica sin que el modelo en sí
+hubiera empeorado. Se identificó la causa, se corrigió (se cambió a un
+método más robusto para ese tamaño de muestra, "sigmoide"/Platt) y se
+volvió a medir todo con la versión corregida antes de reportar estos
+números — ver el detalle completo, con el paso a paso de cómo se
+encontró el bug, en `docs/xgb_1x2_resultados.md` y
+`docs/xgb_binary_resultados.md`.
+
+Por esta razón, **no se sigue a la Fase 5 (la capa que decidiría
+apuestas con dinero real) todavía**: hacerlo sobre modelos sin ventaja
+demostrada sería irresponsable, y el candidato más directo para
+resolverlo (el xG) ya se probó y no alcanzó. Queda como decisión de
+Carlos cómo seguir: avanzar de todos modos sabiendo las salvedades,
+buscar otra señal predictiva (ej. usar las cuotas de las casas de
+apuestas, que ya están en la base de datos pero no se usan como
+entrada de los modelos), o pausar esta fase.
 
 ## Dónde está el proyecto hoy (11 nov 2026)
 
 Fases 0 a 3 completas. Fase 4 con 4 de 5 tareas hechas (split temporal,
-los 3 modelos) — el pipeline funciona de punta a punta, pero ninguno
-de los 3 modelos muestra todavía una ventaja clara sobre predecir la
-tasa histórica (ver el hallazgo de arriba). La base de datos tiene,
-con datos reales ya cargados: 5 ligas, 10 temporadas, 110 equipos,
-miles de partidos con su marcador, más de 130.000 filas de cuotas
-históricas (los 3 mercados: 1x2, más/menos goles y hándicap asiático),
-la tabla de posiciones histórica, y el dataset de features.
+los 3 modelos, ya re-medidos con xG) — el pipeline funciona de punta a
+punta, pero ninguno de los 3 modelos muestra todavía una ventaja clara
+sobre predecir la tasa histórica, ni siquiera con el xG agregado (ver
+el hallazgo de arriba). La base de datos tiene, con datos reales ya
+cargados: 5 ligas, 10 temporadas, 110 equipos, miles de partidos con
+su marcador y su xG real, más de 130.000 filas de cuotas históricas
+(los 3 mercados: 1x2, más/menos goles y hándicap asiático), la tabla
+de posiciones histórica, y el dataset de features.
 
 ## Lo que sigue
 
-Antes de nada más: decidir si se carga el xG a la base de datos y se
-vuelve a medir, o si se sigue de todos modos sabiendo las salvedades
-(ver `INFORME_PENDIENTES.md`). Después de eso: terminar **Fase 4**
-(falta el backtesting histórico, en pausa por el mismo motivo), **Fase
-5** (la capa que decide cuánto apostar y cuándo, en pausa) y **Fase 6**
+Antes de nada más: con el xG ya probado y sin resolver el problema de
+fondo, Carlos tiene que decidir cómo seguir (ver
+`INFORME_PENDIENTES.md`). Después de eso: terminar **Fase 4** (falta
+el backtesting histórico, en pausa por el mismo motivo), **Fase 5**
+(la capa que decide cuánto apostar y cuándo, en pausa) y **Fase 6**
 (que todo el proceso corra solo todos los días). Detalle de cada paso
 y el orden exacto: `PLAN_DE_TRABAJO.md`.

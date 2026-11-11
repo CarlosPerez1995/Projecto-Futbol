@@ -9,11 +9,12 @@ Estado actual: **fase 1 (extracción) completa desde el 8 ago 2026** — multi-f
 (Sofascore, MatchHistory, ESPN, Understat) con config/secrets management, caché
 explícita de `soccerdata`, tests base y CI mínimo. **Fase 2 (modelo de
 datos/BD SQLite) retomada el 13-14 oct 2026** — **2.1-2.4 completas**:
-esquema v3 (`db/schema_v3.sql`: histórico completo de `odds` y `fixtures`,
-no upsert — decisión de Carlos), conexión (`database.py`), loader
+esquema v4 (`db/schema_v4.sql`: histórico completo de `odds` y `fixtures`,
+no upsert — decisión de Carlos; `matches.home_xg`/`away_xg` SÍ upsert
+real, agregado 11 nov, ver abajo), conexión (`database.py`), loader
 (`load_data.py`: catálogos, identidad de equipos/partidos, upsert real de
-marcador, histórico de cuotas 1x2, over/under 2.5 y hándicap asiático, y de
-la tabla de posiciones) y validación
+marcador, histórico de cuotas 1x2, over/under 2.5 y hándicap asiático, de
+la tabla de posiciones, y de xG de Understat vía `load_xg`) y validación
 (`validate_data.py`). **Fase 3 (features) completa (26 oct 2026)**, autorizada por
 Carlos: 3.1 (features por partido), 3.2 (features por equipo, sin data
 leakage verificado con tests dedicados) y 3.3 (dataset consolidado,
@@ -33,10 +34,22 @@ le gana con claridad a una línea base trivial** (predecir siempre la
 tasa histórica de train) al comparar en test — hallazgo real
 encontrado el 11 nov al construir 4.4, que obligó a revisar también
 4.2/4.3 (no se habían comparado contra ninguna línea base al
-reportarlos la primera vez, corregido). Detalle completo y
-recomendación antes de seguir a Fase 5 en `docs/xgb_binary_resultados.md`.
-4.5 (backtesting) en pausa hasta resolver esto — no tiene sentido medir
-rentabilidad de apostar con modelos sin edge demostrado todavía.
+reportarlos la primera vez, corregido). **Re-medido el mismo 11 nov**
+tras cargar xG real a la BD y agregar `xg_scored_avg_last5`/
+`xg_conceded_avg_last5` como features de equipo (decisión de Carlos):
+resultado real, el xG no cambia la conclusión — mejora marginal en 1X2
+y en `over_2_5` (que pasa a ganarle a la trivial por un margen chico),
+sin cambio o levemente peor en los otros dos mercados, ninguno cruza
+el umbral del plan. Al remedir se encontró y corrigió un bug real de
+calibración isotónica inestable con un `val` de ~528 filas (asignaba
+probabilidad exacta 0.0 a la clase verdadera en varios partidos de
+test, disparando el LogLoss por el recorte numérico de `log_loss`) —
+`calibrate_xgb_1x2`/`calibrate_binary_model` pasaron de
+`method="isotonic"` a `method="sigmoid"`. Detalle completo en
+`docs/xgb_1x2_resultados.md` y `docs/xgb_binary_resultados.md`.
+4.5 (backtesting) en pausa hasta que Carlos decida cómo seguir — no
+tiene sentido medir rentabilidad de apostar con modelos sin edge
+demostrado todavía.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -156,7 +169,7 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     entry point `futbol-extract`.
   - `src/futbol/db/database.py` — conexión a la BD SQLite (tarea 2.2):
     `get_connection`, `close_connection`, `init_db` (aplica
-    `db/schema_v3.sql`, idempotente — detecta tablas ya creadas en vez de
+    `db/schema_v4.sql`, idempotente — detecta tablas ya creadas en vez de
     depender de `IF NOT EXISTS` en el `.sql` versionado).
   - `src/futbol/db/load_data.py` — loader CSV→BD (tarea 2.3, completa):
     catálogos (`load_leagues`/`load_seasons`, `INSERT OR IGNORE`),
@@ -168,11 +181,15 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     `load_odds_extra_markets`/`_parse_over_under_odds`/
     `_parse_asian_handicap_odds` (cuotas over/under 2.5 y hándicap
     asiático: mismo histórico completo, línea 2.5 fija en over/under y
-    línea compartida `ahh`/`ahch` entre casas en hándicap asiático) y
+    línea compartida `ahh`/`ahch` entre casas en hándicap asiático),
     `load_fixtures` (tabla de posiciones: histórico completo, posición
-    calculada por orden de fila del CSV de `standings`, no recalculada).
-    `captured_at` de ambas = timestamp de la corrida de extracción, no de
-    inserción — ver `db/schema_v3.sql`.
+    calculada por orden de fila del CSV de `standings`, no recalculada) y
+    `load_xg` (xG real de Understat a `matches.home_xg`/`away_xg`,
+    agregado 11 nov: upsert real, no histórico — un xG de un partido ya
+    jugado es un hecho fijo, igual criterio que `home_score`/`away_score`,
+    no como `odds`/`fixtures` que sí cambian con el tiempo).
+    `captured_at` de odds/fixtures = timestamp de la corrida de
+    extracción, no de inserción — ver `db/schema_v4.sql`.
   - `src/futbol/db/validate_data.py` — validación de datos (tarea 2.4):
     `run_validation` genera `data/reports/validation_<fecha>.xlsx` (hojas
     `resumen`/`errores`) con 5 checks contra el estado actual de la BD:
@@ -183,9 +200,9 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     Fase 3): `compute_match_features` lee `matches` ya cargados (solo
     `status='played'`) y calcula `total_goals`/`goal_difference`/
     `result_1x2`/`over_1_5`/`over_2_5`/`over_3_5`/`btts`; `home_xg`/
-    `away_xg` quedan `NA` ("pendiente de fuente": Understat trae xG,
-    pero Fase 2 no lo cargó a la BD, solo usó Understat para identidad
-    de equipos/partidos — ver `docs/features_map.txt`).
+    `away_xg` vienen directo de la BD (desde `db/schema_v4.sql`/
+    `load_xg`, 11 nov) — quedan `NA` solo para el partido puntual que no
+    tenga xG cargado, ya no universalmente.
     `save_features_matches` escribe `data/processed/features_matches.csv`.
   - `src/futbol/features/teams.py` — features de forma por equipo
     (tarea 3.2, Fase 3): `compute_team_features` calcula, por equipo
@@ -194,7 +211,11 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     antes de agregar (`shift(1)` + `rolling`)** para que el partido en
     curso nunca entre en su propio cálculo (sin data leakage,
     verificado con un escenario de 3 partidos calculado a mano en
-    `tests/test_features_teams.py`). Ver `docs/features_map.txt` para
+    `tests/test_features_teams.py`). Incluye desde el 11 nov
+    `xg_scored_avg_last5`/`xg_conceded_avg_last5` (mismo patrón sin
+    fuga, sobre el xG real de `matches`) — decisión de Carlos para
+    volver a medir Fase 4; resultado real en
+    `docs/xgb_binary_resultados.md`. Ver `docs/features_map.txt` para
     el detalle de cada columna `_home`/`_away`.
   - `src/futbol/features/dataset.py` — dataset consolidado (tarea 3.3,
     Fase 3): `build_model_dataset` une 3.1+3.2 por `match_id` y separa
@@ -233,33 +254,39 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   - `src/futbol/models/xgb_1x2.py` — clasificación 1X2 con XGBoost
     (tarea 4.3, Fase 4): `fit_xgb_1x2` (train + `GridSearchCV` con
     `TimeSeriesSplit`, nunca k-fold al azar) → `calibrate_xgb_1x2`
-    (val, regresión isotónica vía `CalibratedClassifierCV(
-    FrozenEstimator(...))` — API vigente en scikit-learn 1.9.1, el
-    `cv="prefit"` viejo ya no existe, verificado contra el código
-    instalado antes de usarlo) → `evaluate_xgb_1x2` (test, LogLoss +
-    Brier) → `save_model` (versionado por fecha,
-    `models/xgb_1x2/<version>/model.pkl` + `metrics.json` con feature
-    importances y el hash del dataset de entrenamiento — `models/` no
-    se versiona, mismo criterio que `data/`, ver `.gitignore`).
-    `result_1x2` se codifica con `LabelEncoder` (XGBoost 3.4.1 rechaza
-    texto directo, verificado) y `current_streak_result_*` (texto) se
-    codifica a escala ordinal simple antes de entrenar — el resto de
-    `predictor_columns()` ya es numérico y XGBoost acepta sus `NaN`
-    nativamente, sin imputar. Resultados completos, con una nota
-    honesta sobre una posible ambigüedad de convención en la métrica
-    Brier del plan original, en `docs/xgb_1x2_resultados.md`.
+    (val, regresión sigmoide/Platt vía `CalibratedClassifierCV(
+    FrozenEstimator(...), method="sigmoid")` — API vigente en
+    scikit-learn 1.9.1, el `cv="prefit"` viejo ya no existe, verificado
+    contra el código instalado antes de usarlo; **cambiado de
+    `"isotonic"` a `"sigmoid"` el 11 nov**, al remedir con xG: la
+    isotónica asignaba probabilidad exacta 0.0 a la clase verdadera en
+    varios partidos de test, disparando el LogLoss por el recorte
+    numérico de `log_loss` — bug de estabilidad con un `val` de ~528
+    filas, no una mejora real del modelo, ver `docs/xgb_1x2_resultados.md`)
+    → `evaluate_xgb_1x2` (test, LogLoss + Brier) → `save_model`
+    (versionado por fecha, `models/xgb_1x2/<version>/model.pkl` +
+    `metrics.json` con feature importances y el hash del dataset de
+    entrenamiento — `models/` no se versiona, mismo criterio que
+    `data/`, ver `.gitignore`). `result_1x2` se codifica con
+    `LabelEncoder` (XGBoost 3.4.1 rechaza texto directo, verificado) y
+    `current_streak_result_*` (texto) se codifica a escala ordinal
+    simple antes de entrenar — el resto de `predictor_columns()` ya es
+    numérico y XGBoost acepta sus `NaN` nativamente, sin imputar.
+    Resultados completos, con una nota honesta sobre una posible
+    ambigüedad de convención en la métrica Brier del plan original, en
+    `docs/xgb_1x2_resultados.md`.
   - `src/futbol/models/xgb_binary.py` — over/under y BTTS con XGBoost
     (tarea 4.4, Fase 4): mismo patrón exacto que `xgb_1x2.py`
-    (reusa su `_features()`), aplicado a 3 objetivos binarios
+    (reusa su `_features()`, misma calibración sigmoide desde el 11
+    nov), aplicado a 3 objetivos binarios
     (`BINARY_TARGETS = ["over_1_5", "over_2_5", "btts"]`) con un
     modelo separado por objetivo, no multi-etiqueta.
     `fit_calibrate_evaluate_all()` corre el flujo completo para los 3
-    de una. **Resultado real: ningún AUC pasa de 0.55** (criterio del
-    plan era >0.6) — diagnóstico completo (no es un bug de
-    calibración, descartado comparando isotónica/sigmoide/sin
-    calibrar; el modelo no generaliza de train a val/test) y la
-    corrección retroactiva de 4.2/4.3 contra línea base trivial en
-    `docs/xgb_binary_resultados.md`.
+    de una. **Resultado real (con xG, re-medido 11 nov): ningún AUC
+    pasa de 0.56** (criterio del plan era >0.6) — solo `over_2_5` le
+    gana a la línea base trivial en LogLoss, por un margen chico.
+    Diagnóstico completo (comparación controlada con/sin xG, misma
+    calibración en ambos lados) en `docs/xgb_binary_resultados.md`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.
@@ -297,7 +324,7 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   `NOT NULL DEFAULT 0` (bug real: SQLite trata cada `NULL` como distinto en
   una `UNIQUE`, con `line` en `NULL` para 1x2 la restricción no bloqueaba
   duplicados exactos).
-- `db/schema_v3.sql` — esquema vigente (14 oct). Única diferencia real
+- `db/schema_v3.sql` — superada (14 oct). Única diferencia real
   respecto a v2: `fixtures` recibe el mismo tratamiento que `odds` en v2 —
   agrega `captured_at` a su `UNIQUE` (pasa de `(season_id, team_id)` a
   `(season_id, team_id, captured_at)`), misma decisión de Carlos de
@@ -306,8 +333,14 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   `captured_at` = timestamp de la corrida de extracción en ambas tablas,
   nunca de inserción. A diferencia de `odds.line` en v1, ninguna columna de
   la nueva `UNIQUE` de `fixtures` podía ser `NULL` (ya eran `NOT NULL` por
-  FK) — no hizo falta ningún valor sentinela acá. Próximos cambios de
-  esquema van en `schema_v4.sql`, nunca editando v1, v2 ni v3.
+  FK) — no hizo falta ningún valor sentinela acá.
+- `db/schema_v4.sql` — esquema vigente (11 nov). Agrega `home_xg`/
+  `away_xg REAL` a `matches` — a diferencia de `odds`/`fixtures`, NO
+  histórico: el xG de un partido ya jugado es un hecho fijo, mismo
+  tratamiento que `home_score`/`away_score` (upsert real vía `load_xg`).
+  Decisión de Carlos (11 nov) para volver a medir Fase 4 con esta
+  feature nueva. Próximos cambios de esquema van en `schema_v5.sql`,
+  nunca editando v1-v4.
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
 - Scripts de procesamiento de datos — por crear

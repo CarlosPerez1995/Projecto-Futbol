@@ -14,7 +14,7 @@ import pytest
 from futbol.db.database import get_connection, init_db
 from futbol.features.matches import compute_match_features, save_features_matches
 
-REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v3.sql"
+REPO_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema_v4.sql"
 
 
 @pytest.fixture
@@ -126,13 +126,29 @@ def test_compute_match_features_btts(conn, home_score, away_score, esperado):
     assert bool(df.iloc[0]["btts"]) == esperado
 
 
-def test_compute_match_features_xg_pendiente_de_fuente(conn):
+def test_compute_match_features_xg_sin_cargar_para_este_partido_queda_en_na(conn):
+    """No todos los partidos tienen xG cargado (ej. no estaba en la
+    corrida de Understat) — para esos queda NA, no se inventa un valor."""
     _insert_played_match(conn, "2024-08-16 19:00:00", 1, 0)
 
     df = compute_match_features(conn)
 
     assert pd.isna(df.iloc[0]["home_xg"])
     assert pd.isna(df.iloc[0]["away_xg"])
+
+
+def test_compute_match_features_trae_el_xg_real_cuando_esta_cargado(conn):
+    match_id = _insert_played_match(conn, "2024-08-16 19:00:00", 1, 0)
+    conn.execute(
+        "UPDATE matches SET home_xg = ?, away_xg = ? WHERE match_id = ?",
+        (1.45, 0.62, match_id),
+    )
+    conn.commit()
+
+    df = compute_match_features(conn)
+
+    assert df.iloc[0]["home_xg"] == pytest.approx(1.45)
+    assert df.iloc[0]["away_xg"] == pytest.approx(0.62)
 
 
 def test_compute_match_features_incluye_identificacion(conn):

@@ -1,30 +1,57 @@
 # Resultados del modelo de clasificación 1X2 con XGBoost (tarea 4.3)
 
-Corrida real contra el dataset consolidado completo (3.515 partidos),
-split 70/15/15 (`train`=2.461 / `val`=528 / `test`=526).
+**Actualizado el 11 nov** tras cargar xG real a la BD y volver a medir
+(decisión de Carlos) — ver `docs/xgb_binary_resultados.md` para el
+detalle completo del bug de calibración encontrado en esta remedición
+y la comparación controlada con/sin xG. Resumen de lo que cambia acá:
+el xG mejora el LogLoss de este modelo de forma marginal (1.076 →
+1.073, calibración sigmoide en ambos casos) — sigue sin haber una
+ventaja clara sobre la línea base trivial.
 
-## Resultado en TEST
+Corrida real contra el dataset consolidado completo (3.515 partidos),
+split 70/15/15 (`train`=2.461 / `val`=528 / `test`=526) — mismo split
+que antes de cargar xG, el pendiente no agregó partidos nuevos.
+
+## Resultado en TEST (con xG, calibración sigmoide — ver nota de corrección abajo)
 
 | Métrica | Valor real | Criterio del plan | ¿Cumple? |
 |---|---|---|---|
-| LogLoss | 1.090 | < 1.1 | Sí, el número exacto — ver corrección abajo |
-| Brier (ver nota de convención abajo) | 0.658 | < 0.35 | Depende de la convención, ver abajo |
+| LogLoss | 1.073 | < 1.1 | Sí, el número — ver nota sobre qué tan significativo es |
+| Brier (ver nota de convención abajo) | 0.647 | < 0.35 | Depende de la convención, ver abajo |
 
-## Corrección honesta agregada el 11 nov (al encontrar el mismo problema en la tarea 4.4)
+LogLoss trivial (predecir siempre la proporción H/D/A de `train` para
+todo `test`) = **1.078**. El modelo (1.073) queda apenas mejor que la
+trivial — una diferencia de 0.005, dentro de lo que podría ser ruido
+de una sola corrida de test con 526 partidos. No es la ventaja
+contundente que haría falta para confiar en el modelo sobre simplemente
+conocer las proporciones históricas de local/empate/visitante.
 
-El LogLoss de un modelo trivial que predice siempre la proporción
-histórica de `train` (H/D/A) para todos los partidos de test, sin
-ningún modelo, es **1.078** — **el modelo de XGBoost (1.090) queda
-ligeramente PEOR que esa trivial.** Cumple el número exacto que pedía
-el plan, pero ese número por sí solo no demuestra que el modelo aporte
-algo por encima de simplemente conocer las proporciones históricas de
-local/empate/visitante. Comparado sin calibrar (1.081) y calibrado con
-sigmoide/Platt en vez de isotónica (1.076), el resultado es
-prácticamente el mismo — no es un problema de la calibración, el
-modelo base ya no logra generalizar mejor que la trivial desde `train`
-(LogLoss 0.962) hacia `val`/`test` (~1.05-1.09). Ver
-`docs/xgb_binary_resultados.md` para el diagnóstico completo y la
-recomendación antes de seguir a Fase 5.
+## Corrección importante: bug de calibración isotónica, encontrado al re-medir con xG
+
+Al re-medir con xG, el LogLoss de este modelo saltó a 1.407 usando la
+calibración isotónica original del plan — mucho peor que el 1.090 que
+se había reportado antes (sin xG). Investigado antes de reportarlo
+como "el resultado real": la isotónica asigna probabilidad
+**exactamente 0.0** a la clase verdadera en 5 de los 526 partidos de
+test; `log_loss` recorta esos ceros a un épsilon numérico, lo que
+dispara una penalización gigante (~34 nats cada uno) que no tiene
+nada que ver con que el modelo haya empeorado. Causa: `val` tiene solo
+~528 filas repartidas en 3 clases (one-vs-rest dentro de
+`CalibratedClassifierCV`), insuficiente para que una regresión
+isotónica (no paramétrica) generalice bien en los extremos — la
+sigmoide (Platt, 2 parámetros) es mucho más robusta con ese tamaño de
+muestra. Se comparó sin calibrar (1.077), isotónica (1.407, rota) y
+sigmoide (1.073) antes de decidir el cambio. **Se corrigió el código**
+(`calibrate_xgb_1x2`, ahora `method="sigmoid"`) — ver también
+`docs/xgb_binary_resultados.md`, que tiene el mismo bug y la misma
+corrección para los 3 modelos binarios.
+
+Esto implica que el número reportado anteriormente (1.090, con
+isotónica) para la corrida SIN xG también estaba potencialmente
+afectado por este mismo bug, en menor grado. La comparación limpia
+antes/después de xG, con la misma calibración (sigmoide) en ambos
+lados, es: **sin xG = 1.076, con xG = 1.073** — una mejora de 0.003,
+no significativa.
 
 ## Nota honesta sobre el Brier Score: posible ambigüedad del plan original
 
@@ -39,27 +66,32 @@ pueden comparar entre sí sin problema.
 El plan arquitectónico original pedía "Brier < 0.35" sin especificar
 la fórmula exacta. Si en cambio se promedia esa suma entre las 3
 clases (otra convención común en la literatura de predicción
-deportiva), el número de este modelo sería `0.658 / 3 ≈ 0.219` — que
+deportiva), el número de este modelo sería `0.647 / 3 ≈ 0.216` — que
 SÍ cumpliría el 0.35. No se cambió la fórmula ya usada para "hacer
 pasar" el número: se deja reportado el valor real bajo la definición
-documentada, con esta nota explícita, para que quien revise pueda
-juzgar con la información completa en vez de una cifra sin contexto.
-**LogLoss, que no tiene esta ambigüedad, sí cumple el criterio con
-margen (1.090 contra el límite de 1.1).**
+documentada, con esta nota explícita.
 
-## Importancia de features (top 5, modelo base antes de calibrar)
+## Importancia de features (top 8, modelo base antes de calibrar, con xG)
 
 | Feature | Importancia |
 |---|---|
-| `form_points_avg_last5_home` | 0.146 |
-| `goals_scored_avg_last5_away` | 0.096 |
-| `goals_scored_avg_last5_home` | 0.080 |
-| `matches_played_before_home` | 0.063 |
-| `goals_conceded_avg_last5_home` | 0.062 |
+| `current_streak_result_away` | 0.112 |
+| `xg_scored_avg_last5_home` | 0.094 |
+| `form_points_avg_last5_home` | 0.087 |
+| `xg_scored_avg_last5_away` | 0.081 |
+| `form_points_avg_last5_away` | 0.066 |
+| `xg_conceded_avg_last5_home` | 0.065 |
+| `clean_sheets_rate_last5_away` | 0.052 |
+| `xg_conceded_avg_last5_away` | 0.049 |
 
-Tiene sentido futbolístico: la forma reciente en puntos y los goles a
-favor (local y visitante) son las señales más fuertes — ninguna
-feature "rara" domina por accidente.
+Las 4 features nuevas de xG entran entre las 8 más importantes del
+modelo (el árbol sí las usa para dividir), pero eso no se traduce en
+una mejora medible del LogLoss en test — son útiles para que el
+modelo "explique" mejor el `train` (añaden información que antes no
+tenía), pero no generalizan a una ventaja real sobre la trivial en
+datos nuevos. Mismo patrón que ya se documentó para las features de
+forma de la Fase 3: el modelo encuentra *algo* en `train`, pero eso no
+necesariamente mejora `test`.
 
 ## Decisiones de diseño (no pedidas explícitamente por el plan, pero necesarias)
 
@@ -78,6 +110,9 @@ feature "rara" domina por accidente.
 - **Calibración con el split `val`, nunca `train`**: calibrar con los
   mismos datos que ya vio el modelo al ajustarse daría una calibración
   artificialmente optimista.
+- **Calibración sigmoide (Platt), no isotónica** (cambiado el 11 nov,
+  ver sección dedicada arriba) — la isotónica es inestable con un
+  `val` de este tamaño (~528 filas).
 - **`current_streak_result` (texto `W`/`D`/`L`) se codifica a escala
   ordinal simple** (`W`=1, `D`=0, `L`=−1) antes de entrenar — XGBoost
   en esta versión no acepta columnas de texto directo sin configurar

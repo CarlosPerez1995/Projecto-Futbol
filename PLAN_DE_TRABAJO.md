@@ -27,38 +27,43 @@ cada uno construido sobre el anterior:
    indistinguible en 1, y queda ligeramente peor en 2. Detalle y el
    ejemplo real (ratings que coinciden con los 3 descendidos reales de
    la Premier League 2024-25) en `docs/dixon_coles_resultados.md`.
-3. ~~**Modelo de clasificación 1X2** (XGBoost)~~ — **Hecho (11 nov)**:
-   `src/futbol/models/xgb_1x2.py`. LogLoss 1.090 en test, cumple el
-   número exacto del plan (<1.1) — **corrección agregada el 11 nov**:
-   la línea base trivial da 1.078, el modelo queda ligeramente PEOR.
-   Ver `docs/xgb_1x2_resultados.md`. Cada versión del modelo se guarda
-   con sus métricas y el hash del dataset con que se entrenó
+3. ~~**Modelo de clasificación 1X2** (XGBoost)~~ — **Hecho, re-medido
+   el 11 nov con xG**: `src/futbol/models/xgb_1x2.py`. LogLoss 1.073 en
+   test (calibración sigmoide, corregida — ver más abajo), vs. 1.078 de
+   la línea base trivial: mejora de 0.005, no significativa. Ver
+   `docs/xgb_1x2_resultados.md`. Cada versión del modelo se guarda con
+   sus métricas y el hash del dataset con que se entrenó
    (`models/xgb_1x2/<version>/model.pkl` + `metrics.json`).
-4. ~~**Modelos de over/under y BTTS**~~ — **Hecho (11 nov)**, con un
-   hallazgo real importante: `src/futbol/models/xgb_binary.py`, mismo
-   patrón que 1X2. **Ningún AUC pasa de 0.55** (el plan pedía >0.6) —
-   los 3 modelos quedan peor que la línea base trivial en test.
-   Descartado que sea un bug de calibración (comparado isotónica vs.
-   sigmoide vs. sin calibrar: resultado casi idéntico en los tres
-   casos). Diagnóstico completo, y la corrección retroactiva de 4.2/4.3
-   de arriba, en `docs/xgb_binary_resultados.md`.
+4. ~~**Modelos de over/under y BTTS**~~ — **Hecho, re-medido el 11 nov
+   con xG**: `src/futbol/models/xgb_binary.py`. **Ningún AUC pasa de
+   0.56** (el plan pedía >0.6) — solo `over_2_5` le gana a la línea
+   base trivial en LogLoss, por un margen chico. Ver
+   `docs/xgb_binary_resultados.md`.
 5. **Backtesting histórico** — **en pausa**, no tiene sentido simular
    rentabilidad de apuestas con modelos sin edge demostrado todavía
    contra una línea base trivial (ver punto de decisión abajo).
+6. ~~**Cargar xG real y volver a medir**~~ — **Hecho (11 nov, decisión
+   de Carlos ejecutada)**: `home_xg`/`away_xg` reales cargados en
+   `matches` (`db/schema_v4.sql`, `load_xg`), features de xG rodante
+   por equipo agregadas (`xg_scored_avg_last5`/`xg_conceded_avg_last5`,
+   mismo patrón sin fuga que las de goles). **Resultado real: el xG no
+   cambia la conclusión** — mejora marginal en 1X2 y en `over_2_5`, sin
+   cambio o levemente peor en los otros dos mercados, ninguno cruza el
+   umbral del plan. Al remedir se encontró además un bug de calibración
+   isotónica (corregido, pasó a sigmoide) — detalle completo en
+   `docs/xgb_binary_resultados.md`.
 
-**Punto de decisión antes de seguir — ya no es "cuando convenga"
-como decía esta misma sección antes del 11 nov**: los 3 modelos
-entrenados hasta ahora (Dixon-Coles, XGBoost 1X2, XGBoost over/under y
-BTTS) no muestran una ventaja clara y consistente sobre simplemente
-conocer las tasas históricas. El candidato más directo para mejorar
-esto es cargar el xG de Understat a la base de datos (pendiente desde
-Fase 2/3, ver `INFORME_PENDIENTES.md`) — especialmente relevante para
-over/under y BTTS, donde el xG debería ser una señal mucho más directa
-que promedios de goles de los últimos 5 partidos. Recomendación: cargar
-xG y volver a medir antes de avanzar a Fase 5, o que Carlos decida
-seguir de todos modos sabiendo las salvedades. **Fase 5 queda en pausa
-hasta esta decisión** — construir una capa de apuestas reales sobre un
-modelo sin edge demostrado sería irresponsable.
+**Punto de decisión actualizado (11 nov) — el candidato más directo
+para mejorar ya se probó y no alcanzó**: con xG cargado, los 3 modelos
+XGBoost y el Dixon-Coles (no afectado por el xG, no lo consume) siguen
+sin mostrar una ventaja clara y consistente sobre simplemente conocer
+las tasas históricas. Opciones para Carlos: (1) seguir a Fase 5 de
+todos modos sabiendo las salvedades, (2) buscar otra señal predictiva
+más fuerte (ej. cuotas de mercado como feature, ya están en la BD
+desde Fase 2 pero no se usan como predictoras; alineaciones/lesiones),
+o (3) pausar Fase 4/5 del todo. **Fase 5 sigue en pausa hasta esta
+decisión** — construir una capa de apuestas reales sobre un modelo sin
+edge demostrado sería irresponsable.
 
 ## Fase 5 — Capa prescriptiva
 
@@ -99,6 +104,6 @@ Depende de Fase 5.
 
 (Los mercados de cuotas over/under y hándicap asiático que estaban en
 esta lista ya se implementaron el 10 nov — ver `INFORME_PENDIENTES.md`.
-Cargar xG de Understat YA NO es "cuando convenga" — ver el punto de
-decisión de Fase 4 arriba, pasó a ser el paso recomendado antes de
-seguir.)
+Cargar xG de Understat y volver a medir, que estaba acá como paso
+recomendado, se hizo el 11 nov — ver el punto de decisión de Fase 4
+arriba para el resultado real.)

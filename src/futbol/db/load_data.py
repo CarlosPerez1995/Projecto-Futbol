@@ -26,9 +26,13 @@ Semántica de carga por tabla, decidida por Carlos el 13 oct 2026:
   con ``captured_at`` para los tres mercados. ``fixtures``
   implementado completo (``load_fixtures``), es una sola tabla sin
   mercados que elegir.
+- ``matches.home_xg``/``away_xg`` (gol esperado, Understat): mismo
+  trato que el marcador, upsert real — ``load_xg``, agregado el 11 nov
+  (decisión de Carlos, para volver a medir los modelos de Fase 4 con
+  esta feature nueva; ver ``db/schema_v4.sql``).
 
 Resuelve ``leagues``/``seasons`` (clave natural común a las 4 fuentes,
-ver ``db/schema_v3.sql``) y ``teams``/``matches`` (catálogos canónicos
+ver ``db/schema_v4.sql``) y ``teams``/``matches`` (catálogos canónicos
 con tabla de mapeo por fuente, ``team_source_ids``/``match_source_ids``).
 
 La resolución de equipos usa ``config/team_aliases.json``, curado a
@@ -749,4 +753,52 @@ def load_fixtures(
         "load_fixtures: %d filas de posiciones procesadas desde %s (captured_at=%s)",
         count, path, captured_at,
     )
+    return count
+
+
+def load_xg(conn: sqlite3.Connection, raw_dir: Path = DEFAULT_RAW_DIR) -> int:
+    """Carga ``home_xg``/``away_xg`` (gol esperado) desde
+    ``understat/understat_team_match_stats_*.csv`` en la tabla
+    ``matches`` (``db/schema_v4.sql``).
+
+    Upsert real, igual trato que ``upsert_match_result`` — el xG de un
+    partido ya jugado es un hecho fijo, no algo que cambie con el
+    tiempo como una cuota o una posición en la tabla, así que no tiene
+    sentido guardarlo con historial (a diferencia de ``odds``/
+    ``fixtures``).
+
+    Requiere que ``load_matches`` ya haya corrido con
+    ``source='understat'`` (usa ``match_source_ids`` para resolver el
+    ``match_id``, no vuelve a resolver equipos).
+    """
+    path = _latest_csv(raw_dir / "understat", "understat_team_match_stats")
+    if path is None:
+        logger.warning("load_xg: no hay CSV de understat en %s/understat", raw_dir)
+        return 0
+    df = pd.read_csv(path)
+    count = 0
+    for _, row in df.iterrows():
+        match_row = conn.execute(
+            "SELECT match_id FROM match_source_ids WHERE source = 'understat' AND source_game_key = ?",
+            (row["game"],),
+        ).fetchone()
+        if match_row is None:
+            logger.warning(
+                "load_xg: %r no está en match_source_ids — correr load_matches primero",
+                row["game"],
+            )
+            continue
+        home_xg = _optional_str(row, "home_xg")
+        away_xg = _optional_str(row, "away_xg")
+        if home_xg is None and away_xg is None:
+            continue
+        conn.execute(
+            "UPDATE matches SET home_xg = ?, away_xg = ? WHERE match_id = ?",
+            (float(home_xg) if home_xg is not None else None,
+             float(away_xg) if away_xg is not None else None,
+             match_row[0]),
+        )
+        count += 1
+    conn.commit()
+    logger.info("load_xg: %d partidos con xG actualizado desde %s", count, path)
     return count
