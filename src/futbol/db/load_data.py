@@ -19,11 +19,13 @@ Semántica de carga por tabla, decidida por Carlos el 13 oct 2026:
   partido; posición del equipo antes de un partido dado). Esto cambió
   el esquema dos veces: ``db/schema_v2.sql`` agrega ``captured_at`` a
   ``odds`` (13 oct) y ``db/schema_v3.sql`` lo mismo a ``fixtures``
-  (14 oct) — ver esos archivos. ``odds`` implementado solo para el
-  mercado 1x2 por ahora (``load_odds_1x2``) — over/under y hándicap
-  asiático quedan fuera de alcance de esta iteración, no perdidos, ver
-  docstring de esa función. ``fixtures`` implementado completo
-  (``load_fixtures``), es una sola tabla sin mercados que elegir.
+  (14 oct) — ver esos archivos. ``odds`` implementado para el mercado
+  1x2 (``load_odds_1x2``) y para over/under 2.5 y hándicap asiático
+  (``load_odds_extra_markets``, con ``_parse_over_under_odds``/
+  ``_parse_asian_handicap_odds``) — mismo patrón de histórico completo
+  con ``captured_at`` para los tres mercados. ``fixtures``
+  implementado completo (``load_fixtures``), es una sola tabla sin
+  mercados que elegir.
 
 Resuelve ``leagues``/``seasons`` (clave natural común a las 4 fuentes,
 ver ``db/schema_v3.sql``) y ``teams``/``matches`` (catálogos canónicos
@@ -98,13 +100,19 @@ _MATCH_CSV_SPEC = {
 # Prefijos de casa de apuestas/agregado conocidos para el mercado 1x2 (ver
 # docs/odds_columns_map.md, tomado de football-data.co.uk/notes.txt) ya en
 # minúsculas (post _to_snake_case, que no inserta guion bajo en estas siglas
-# cortas: "B365" -> "b365"). Alcance reducido a propósito a 1x2 — over/under
-# y hándicap asiático quedan para una iteración futura (ver load_odds_1x2).
+# cortas: "B365" -> "b365"). Over/under 2.5 y hándicap asiático tienen sus
+# propios prefijos, más acotados (ver los dos grupos de abajo).
 _1X2_BOOKMAKER_PREFIXES = [
     "1xb", "b365", "bf", "bfd", "bmgm", "bv", "bs", "bw", "cl", "gb",
     "iw", "lb", "pp", "ps", "p", "sk", "so", "sb", "sj", "sy", "vc",
     "wh", "bfe", "max", "avg",
 ]
+
+# Prefijos con columnas reales de over/under 2.5 y de hándicap asiático en
+# data/raw/match_history/ (ver docs/odds_columns_map.md) — menos casas que
+# las ~24 del 1x2: estos dos mercados los cubren menos casas.
+_OVER_UNDER_BOOKMAKER_PREFIXES = ["b365", "p", "max", "avg", "bfe"]
+_ASIAN_HANDICAP_BOOKMAKER_PREFIXES = ["b365", "p", "max", "avg", "bfe"]
 
 _TIMESTAMP_RE = re.compile(r"_(\d{8})_(\d{6})\.csv$")
 
@@ -533,6 +541,151 @@ def load_odds_1x2(conn: sqlite3.Connection, raw_dir: Path = DEFAULT_RAW_DIR) -> 
         count, path, captured_at,
     )
     return count
+
+
+def _parse_over_under_odds(row: pd.Series) -> list[dict]:
+    """Extrae cuotas del mercado over/under 2.5 (pre-cierre y cierre) de
+    una fila de ``match_history`` — mismo patrón que ``_parse_1x2_odds``.
+
+    Columnas reales (ver docs/odds_columns_map.md): ``{prefix}>2.5``
+    (over) / ``{prefix}<2.5`` (under) pre-cierre, con sufijo ``c`` al
+    cierre. La línea es siempre 2.5 constante en estos datos (no hay
+    otra línea en ninguna columna) y NO viene del CSV: la fija el
+    loader (``load_odds_extra_markets``), por eso este dict no la trae.
+
+    ``home_value`` guarda la cuota de over y ``away_value`` la de under
+    (el mercado no tiene empate: ``draw_value`` va siempre ``None``).
+    Solo genera una fila por casa con ambas columnas presentes en este
+    ``DataFrame`` y al menos un valor no nulo.
+    """
+    filas = []
+    for prefix in _OVER_UNDER_BOOKMAKER_PREFIXES:
+        for is_closing, cols in ((0, (f"{prefix}>2.5", f"{prefix}<2.5")),
+                                 (1, (f"{prefix}c>2.5", f"{prefix}c<2.5"))):
+            col_over, col_under = cols
+            if not {col_over, col_under} <= set(row.index):
+                continue
+            over, under = row[col_over], row[col_under]
+            if pd.isna(over) and pd.isna(under):
+                continue
+            filas.append({
+                "bookmaker": prefix,
+                "is_closing": is_closing,
+                "home_value": float(over) if pd.notna(over) else None,
+                "draw_value": None,
+                "away_value": float(under) if pd.notna(under) else None,
+            })
+    return filas
+
+
+def _parse_asian_handicap_odds(row: pd.Series) -> list[dict]:
+    """Extrae cuotas del mercado hándicap asiático (pre-cierre y cierre)
+    de una fila de ``match_history`` — mismo patrón que
+    ``_parse_1x2_odds``, con una diferencia estructural: la LÍNEA (tamaño
+    del hándicap) no es una columna por casa sino UNA sola compartida
+    entre todas las casas — ``ahh`` pre-cierre, ``ahch`` cierre.
+
+    Si la columna de línea no existe en el ``DataFrame`` o es ``NaN``
+    para esta fila, no se genera NINGUNA fila de esa variante para
+    ninguna casa — no se adivina una línea. La línea sí va en el dict
+    (a diferencia de over/under), porque cambia de partido a partido:
+    el loader la inserta tal cual (``cuota["line"]``).
+
+    ``home_value`` es la cuota local y ``away_value`` la visitante
+    (``{prefix}ahh``/``{prefix}aha`` pre-cierre, con sufijo ``c`` al
+    cierre); ``draw_value`` va siempre ``None`` (mercado a dos
+    resultados).
+    """
+    filas = []
+    for is_closing, col_line, plantilla_cols in (
+        (0, "ahh", ("{p}ahh", "{p}aha")),
+        (1, "ahch", ("{p}cahh", "{p}caha")),
+    ):
+        if col_line not in row.index or pd.isna(row[col_line]):
+            continue
+        line = float(row[col_line])
+        for prefix in _ASIAN_HANDICAP_BOOKMAKER_PREFIXES:
+            col_h, col_a = plantilla_cols[0].format(p=prefix), plantilla_cols[1].format(p=prefix)
+            if not {col_h, col_a} <= set(row.index):
+                continue
+            h, a = row[col_h], row[col_a]
+            if pd.isna(h) and pd.isna(a):
+                continue
+            filas.append({
+                "bookmaker": prefix,
+                "is_closing": is_closing,
+                "line": line,
+                "home_value": float(h) if pd.notna(h) else None,
+                "draw_value": None,
+                "away_value": float(a) if pd.notna(a) else None,
+            })
+    return filas
+
+
+def load_odds_extra_markets(conn: sqlite3.Connection, raw_dir: Path = DEFAULT_RAW_DIR) -> dict[str, int]:
+    """Carga cuotas de over/under 2.5 y hándicap asiático desde
+    ``match_history/match_history_*.csv`` — mismo esqueleto que
+    ``load_odds_1x2`` (histórico completo, ``captured_at`` = timestamp
+    de la corrida de extracción, ``INSERT OR IGNORE``), una sola pasada
+    del CSV que llena ambos mercados.
+
+    ``line`` de over/under es la constante 2.5, fija en el SQL (no viene
+    del dict, ver ``_parse_over_under_odds``); la del hándicap asiático
+    viene de la columna compartida ``ahh``/``ahch`` vía
+    ``cuota["line"]``. Devuelve cuántas filas insertó por mercado.
+
+    Requiere que ``load_matches`` ya haya corrido con
+    ``source='match_history'`` (usa ``match_source_ids`` para resolver
+    el ``match_id``, no vuelve a resolver equipos).
+    """
+    path = _latest_csv(raw_dir / "match_history", "match_history")
+    if path is None:
+        logger.warning("load_odds_extra_markets: no hay CSV de match_history en %s", raw_dir)
+        return {"over_under_2.5": 0, "asian_handicap": 0}
+    captured_at = _timestamp_from_filename(path)
+    df = pd.read_csv(path)
+    counts = {"over_under_2.5": 0, "asian_handicap": 0}
+    for _, row in df.iterrows():
+        match_row = conn.execute(
+            "SELECT match_id FROM match_source_ids WHERE source = 'match_history' AND source_game_key = ?",
+            (row["game"],),
+        ).fetchone()
+        if match_row is None:
+            logger.warning(
+                "load_odds_extra_markets: %r no está en match_source_ids — correr load_matches primero",
+                row["game"],
+            )
+            continue
+        match_id = match_row[0]
+        for cuota in _parse_over_under_odds(row):
+            conn.execute(
+                "INSERT OR IGNORE INTO odds "
+                "(match_id, bookmaker, market, is_closing, line, home_value, draw_value, away_value, captured_at) "
+                "VALUES (?, ?, 'over_under_2.5', ?, 2.5, ?, ?, ?, ?)",
+                (
+                    match_id, cuota["bookmaker"], cuota["is_closing"],
+                    cuota["home_value"], cuota["draw_value"], cuota["away_value"], captured_at,
+                ),
+            )
+            counts["over_under_2.5"] += 1
+        for cuota in _parse_asian_handicap_odds(row):
+            conn.execute(
+                "INSERT OR IGNORE INTO odds "
+                "(match_id, bookmaker, market, is_closing, line, home_value, draw_value, away_value, captured_at) "
+                "VALUES (?, ?, 'asian_handicap', ?, ?, ?, ?, ?, ?)",
+                (
+                    match_id, cuota["bookmaker"], cuota["is_closing"], cuota["line"],
+                    cuota["home_value"], cuota["draw_value"], cuota["away_value"], captured_at,
+                ),
+            )
+            counts["asian_handicap"] += 1
+    conn.commit()
+    logger.info(
+        "load_odds_extra_markets: %d filas de over/under 2.5 y %d de hándicap asiático "
+        "procesadas desde %s (captured_at=%s)",
+        counts["over_under_2.5"], counts["asian_handicap"], path, captured_at,
+    )
+    return counts
 
 
 def load_fixtures(

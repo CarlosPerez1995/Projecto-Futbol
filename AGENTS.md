@@ -12,10 +12,9 @@ datos/BD SQLite) retomada el 13-14 oct 2026** — **2.1-2.4 completas**:
 esquema v3 (`db/schema_v3.sql`: histórico completo de `odds` y `fixtures`,
 no upsert — decisión de Carlos), conexión (`database.py`), loader
 (`load_data.py`: catálogos, identidad de equipos/partidos, upsert real de
-marcador, histórico de cuotas 1x2 y de la tabla de posiciones) y validación
-(`validate_data.py`). Pendiente dentro de alcance reducido a propósito, no
-bloqueante: mercados over/under y hándicap asiático de `odds` (solo 1x2
-implementado). **Fase 3 (features) completa (26 oct 2026)**, autorizada por
+marcador, histórico de cuotas 1x2, over/under 2.5 y hándicap asiático, y de
+la tabla de posiciones) y validación
+(`validate_data.py`). **Fase 3 (features) completa (26 oct 2026)**, autorizada por
 Carlos: 3.1 (features por partido), 3.2 (features por equipo, sin data
 leakage verificado con tests dedicados) y 3.3 (dataset consolidado,
 `src/futbol/features/dataset.py` — separa explícitamente columnas
@@ -142,13 +141,15 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     `load_matches` (identidad de partido por ventana de ±6h entre
     fuentes, no igualdad exacta de hora — ver docstring del módulo),
     `upsert_match_result` (marcador: upsert real, decisión de Carlos),
-    `load_odds_1x2`/`_parse_1x2_odds` (cuotas 1x2: histórico completo) y
+    `load_odds_1x2`/`_parse_1x2_odds` (cuotas 1x2: histórico completo),
+    `load_odds_extra_markets`/`_parse_over_under_odds`/
+    `_parse_asian_handicap_odds` (cuotas over/under 2.5 y hándicap
+    asiático: mismo histórico completo, línea 2.5 fija en over/under y
+    línea compartida `ahh`/`ahch` entre casas en hándicap asiático) y
     `load_fixtures` (tabla de posiciones: histórico completo, posición
     calculada por orden de fila del CSV de `standings`, no recalculada).
     `captured_at` de ambas = timestamp de la corrida de extracción, no de
-    inserción — ver `db/schema_v3.sql`. Over/under y hándicap asiático de
-    `odds` no implementados todavía (alcance reducido a propósito, ver
-    "Estado actual" arriba).
+    inserción — ver `db/schema_v3.sql`.
   - `src/futbol/db/validate_data.py` — validación de datos (tarea 2.4):
     `run_validation` genera `data/reports/validation_<fecha>.xlsx` (hojas
     `resumen`/`errores`) con 5 checks contra el estado actual de la BD:

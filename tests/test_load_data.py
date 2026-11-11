@@ -16,11 +16,14 @@ from futbol.db.database import init_db, get_connection
 from futbol.db.load_data import (
     _find_existing_match,
     _parse_1x2_odds,
+    _parse_asian_handicap_odds,
+    _parse_over_under_odds,
     _timestamp_from_filename,
     load_fixtures,
     load_leagues,
     load_matches,
     load_odds_1x2,
+    load_odds_extra_markets,
     load_seasons,
     load_team_aliases,
     resolve_or_create_match,
@@ -304,8 +307,11 @@ def raw_dir_con_4_fuentes(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (raw_dir / "match_history" / "match_history_20260101_000000.csv").write_text(
-        "league,season,game,date,home_team,away_team\n"
-        "TEST-League,2024,2024-08-16 A-B,2024-08-16 20:00:00,A,B\n",
+        "league,season,game,date,home_team,away_team,"
+        "b365>2.5,b365<2.5,b365c>2.5,b365c<2.5,"
+        "ahh,b365ahh,b365aha,ahch,b365cahh,b365caha\n"
+        "TEST-League,2024,2024-08-16 A-B,2024-08-16 20:00:00,A,B,"
+        "1.85,2.05,1.80,2.10,0.25,1.95,1.95,0.5,1.90,2.00\n",
         encoding="utf-8",
     )
     return raw_dir
@@ -584,3 +590,93 @@ def test_load_fixtures_guarda_historico_y_es_idempotente_por_corrida(conn, raw_d
         )
     }
     assert puntos_team_a == {25, 28}  # las dos capturas, no se pisó la vieja
+
+
+# ---------------------------------------------------------------------------
+# _parse_over_under_odds / _parse_asian_handicap_odds / load_odds_extra_markets
+# ---------------------------------------------------------------------------
+
+def test_parse_over_under_odds_extrae_pre_cierre_y_cierre():
+    row = pd.Series({
+        "b365>2.5": 1.85, "b365<2.5": 2.05,
+        "b365c>2.5": 1.80, "b365c<2.5": 2.10,
+        "columna_no_relacionada": "x",
+    })
+
+    cuotas = _parse_over_under_odds(row)
+
+    assert {"bookmaker": "b365", "is_closing": 0, "home_value": 1.85, "draw_value": None, "away_value": 2.05} in cuotas
+    assert {"bookmaker": "b365", "is_closing": 1, "home_value": 1.80, "draw_value": None, "away_value": 2.10} in cuotas
+    assert len(cuotas) == 2  # pre-cierre y cierre, solo b365 tiene columnas en esta fila
+    # market/line NO van en el dict: los pone el loader (line=2.5 es constante)
+    assert all("market" not in c and "line" not in c for c in cuotas)
+
+
+def test_parse_over_under_odds_sin_columnas_del_mercado_devuelve_lista_vacia():
+    row = pd.Series({"b365h": 1.6, "b365d": 4.2, "b365a": 5.25})  # solo columnas 1x2
+
+    assert _parse_over_under_odds(row) == []
+
+
+def test_parse_asian_handicap_odds_usa_la_linea_compartida_de_ahh_ahch():
+    row = pd.Series({
+        "ahh": 0.25, "b365ahh": 1.95, "b365aha": 1.95,
+        "ahch": 0.5, "b365cahh": 1.90, "b365caha": 2.00,
+    })
+
+    cuotas = _parse_asian_handicap_odds(row)
+
+    assert {
+        "bookmaker": "b365", "is_closing": 0, "line": 0.25,
+        "home_value": 1.95, "draw_value": None, "away_value": 1.95,
+    } in cuotas
+    assert {
+        "bookmaker": "b365", "is_closing": 1, "line": 0.5,
+        "home_value": 1.90, "draw_value": None, "away_value": 2.00,
+    } in cuotas
+    assert len(cuotas) == 2  # pre-cierre y cierre, solo b365 tiene columnas en esta fila
+    # la línea sale de ahh/ahch (compartida entre casas), no inventada
+    assert all("market" not in c for c in cuotas)
+
+
+def test_parse_asian_handicap_odds_sin_columna_de_linea_devuelve_lista_vacia():
+    # hay cuotas por casa pero falta la columna de línea compartida:
+    # no se adivina una línea, no se genera ninguna fila
+    row = pd.Series({"b365ahh": 1.95, "b365aha": 1.95})
+
+    assert _parse_asian_handicap_odds(row) == []
+
+
+def test_load_odds_extra_markets_guarda_ambos_mercados_y_es_idempotente(
+    conn, raw_dir_con_4_fuentes
+):
+    load_leagues(conn, raw_dir_con_4_fuentes)
+    load_seasons(conn, raw_dir_con_4_fuentes)
+    load_matches(conn, _TEST_ALIASES, raw_dir_con_4_fuentes)
+
+    n_1 = load_odds_extra_markets(conn, raw_dir_con_4_fuentes)
+
+    # 1 fila del CSV x 2 variantes (pre-cierre/cierre) x 1 casa (b365) por mercado
+    assert n_1 == {"over_under_2.5": 2, "asian_handicap": 2}
+    assert conn.execute(
+        "SELECT COUNT(*) FROM odds WHERE market = 'over_under_2.5'"
+    ).fetchone()[0] == 2
+    assert conn.execute(
+        "SELECT COUNT(*) FROM odds WHERE market = 'asian_handicap'"
+    ).fetchone()[0] == 2
+
+    # line de over/under es la constante 2.5 fija en el SQL, no la del CSV;
+    # la del hándicap asiático es variable y sale de ahh/ahch
+    lineas_ou = {r[0] for r in conn.execute(
+        "SELECT line FROM odds WHERE market = 'over_under_2.5'"
+    )}
+    assert lineas_ou == {2.5}
+    lineas_ah = {r[0] for r in conn.execute(
+        "SELECT line FROM odds WHERE market = 'asian_handicap'"
+    )}
+    assert lineas_ah == {0.25, 0.5}
+
+    # recargar la MISMA corrida (mismo captured_at) no duplica
+    n_2 = load_odds_extra_markets(conn, raw_dir_con_4_fuentes)
+    assert n_2 == {"over_under_2.5": 2, "asian_handicap": 2}
+    assert conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0] == 4
