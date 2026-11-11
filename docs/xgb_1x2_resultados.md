@@ -7,8 +7,24 @@ split 70/15/15 (`train`=2.461 / `val`=528 / `test`=526).
 
 | Métrica | Valor real | Criterio del plan | ¿Cumple? |
 |---|---|---|---|
-| LogLoss | 1.090 | < 1.1 | **Sí** |
+| LogLoss | 1.090 | < 1.1 | Sí, el número exacto — ver corrección abajo |
 | Brier (ver nota de convención abajo) | 0.658 | < 0.35 | Depende de la convención, ver abajo |
+
+## Corrección honesta agregada el 11 nov (al encontrar el mismo problema en la tarea 4.4)
+
+El LogLoss de un modelo trivial que predice siempre la proporción
+histórica de `train` (H/D/A) para todos los partidos de test, sin
+ningún modelo, es **1.078** — **el modelo de XGBoost (1.090) queda
+ligeramente PEOR que esa trivial.** Cumple el número exacto que pedía
+el plan, pero ese número por sí solo no demuestra que el modelo aporte
+algo por encima de simplemente conocer las proporciones históricas de
+local/empate/visitante. Comparado sin calibrar (1.081) y calibrado con
+sigmoide/Platt en vez de isotónica (1.076), el resultado es
+prácticamente el mismo — no es un problema de la calibración, el
+modelo base ya no logra generalizar mejor que la trivial desde `train`
+(LogLoss 0.962) hacia `val`/`test` (~1.05-1.09). Ver
+`docs/xgb_binary_resultados.md` para el diagnóstico completo y la
+recomendación antes de seguir a Fase 5.
 
 ## Nota honesta sobre el Brier Score: posible ambigüedad del plan original
 

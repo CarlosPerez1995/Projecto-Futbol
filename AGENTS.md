@@ -25,10 +25,18 @@ instalados y congelados en `requirements.txt`; 4.1 (split temporal,
 `src/futbol/models/split.py`) y 4.2 (Poisson/Dixon-Coles,
 `src/futbol/models/poisson_dixon_coles.py` — un modelo por liga/
 temporada, RPS < 0.25 en test en las 5 ligas, ver
-`docs/dixon_coles_resultados.md`) y 4.3 (clasificación 1X2 con XGBoost,
-`src/futbol/models/xgb_1x2.py` — LogLoss 1.090 < 1.1 en test, cumple;
-Brier reportado con nota honesta de ambigüedad de convención, ver
-`docs/xgb_1x2_resultados.md`) hechas — 4.4-4.5 pendientes.
+`docs/dixon_coles_resultados.md`), 4.3 (clasificación 1X2 con XGBoost,
+`src/futbol/models/xgb_1x2.py`) y 4.4 (over/under y BTTS con XGBoost,
+`src/futbol/models/xgb_binary.py`) hechas — código y pipeline de las 3
+verificados con tests y contra datos reales, pero **ninguna de las 3
+le gana con claridad a una línea base trivial** (predecir siempre la
+tasa histórica de train) al comparar en test — hallazgo real
+encontrado el 11 nov al construir 4.4, que obligó a revisar también
+4.2/4.3 (no se habían comparado contra ninguna línea base al
+reportarlos la primera vez, corregido). Detalle completo y
+recomendación antes de seguir a Fase 5 en `docs/xgb_binary_resultados.md`.
+4.5 (backtesting) en pausa hasta resolver esto — no tiene sentido medir
+rentabilidad de apostar con modelos sin edge demostrado todavía.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -240,6 +248,18 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     nativamente, sin imputar. Resultados completos, con una nota
     honesta sobre una posible ambigüedad de convención en la métrica
     Brier del plan original, en `docs/xgb_1x2_resultados.md`.
+  - `src/futbol/models/xgb_binary.py` — over/under y BTTS con XGBoost
+    (tarea 4.4, Fase 4): mismo patrón exacto que `xgb_1x2.py`
+    (reusa su `_features()`), aplicado a 3 objetivos binarios
+    (`BINARY_TARGETS = ["over_1_5", "over_2_5", "btts"]`) con un
+    modelo separado por objetivo, no multi-etiqueta.
+    `fit_calibrate_evaluate_all()` corre el flujo completo para los 3
+    de una. **Resultado real: ningún AUC pasa de 0.55** (criterio del
+    plan era >0.6) — diagnóstico completo (no es un bug de
+    calibración, descartado comparando isotónica/sigmoide/sin
+    calibrar; el modelo no generaliza de train a val/test) y la
+    corrección retroactiva de 4.2/4.3 contra línea base trivial en
+    `docs/xgb_binary_resultados.md`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

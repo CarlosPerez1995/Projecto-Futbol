@@ -12,15 +12,30 @@ por cada `(league_code, season_code)` (`src/futbol/models/poisson_dixon_coles.py
 
 ## Evaluación en TEST (criterio de aceptación del plan: RPS < 0.25)
 
-| Liga | Temporada | Partidos train | Partidos test | RPS | Brier |
-|---|---|---|---|---|---|
-| ENG-Premier League | 2526 | 152 | 100 | 0.231 | 0.681 |
-| ESP-La Liga | 2526 | 155 | 124 | 0.218 | 0.612 |
-| FRA-Ligue 1 | 2526 | 136 | 95 | 0.238 | 0.703 |
-| GER-Bundesliga | 2526 | 122 | 93 | 0.212 | 0.619 |
-| ITA-Serie A | 2526 | 142 | 114 | 0.226 | 0.642 |
+| Liga | Temporada | Partidos train | Partidos test | RPS | RPS trivial* | Brier |
+|---|---|---|---|---|---|---|
+| ENG-Premier League | 2526 | 152 | 100 | 0.231 | 0.223 | 0.681 |
+| ESP-La Liga | 2526 | 155 | 124 | 0.218 | 0.220 | 0.612 |
+| FRA-Ligue 1 | 2526 | 136 | 95 | 0.238 | 0.236 | 0.703 |
+| GER-Bundesliga | 2526 | 122 | 93 | 0.212 | 0.239 | 0.619 |
+| ITA-Serie A | 2526 | 142 | 114 | 0.226 | 0.239 | 0.642 |
 
-**Las 5 ligas cumplen el criterio de aceptación (RPS < 0.25 en test).**
+\* RPS trivial = predecir siempre la proporción histórica H/D/A de
+`train` para todos los partidos de test, sin ningún modelo — ver nota
+de corrección más abajo.
+
+**Las 5 ligas cumplen el número exacto del criterio de aceptación (RPS
+< 0.25 en test) — pero eso por sí solo no demuestra que el modelo
+aporte algo.**
+
+**Corrección honesta agregada el 11 nov, al encontrar el mismo problema
+en la tarea 4.4**: comparado contra la línea base trivial, el modelo
+gana con claridad en GER-Bundesliga e ITA-Serie A, es prácticamente
+indistinguible de la trivial en ESP-La Liga, y queda ligeramente PEOR
+que la trivial en ENG-Premier League y FRA-Ligue 1. Un resultado
+mixto, no el "aprueba las 5 ligas" que parecía al mirar solo el número
+absoluto sin comparar contra nada — ver `docs/xgb_binary_resultados.md`
+para el detalle completo y la recomendación antes de seguir a Fase 5.
 
 La temporada **2425** de las 5 ligas no aparece en esta tabla: cae
 entera dentro del split de entrenamiento (terminó antes del corte

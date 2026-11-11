@@ -266,29 +266,47 @@ Poisson/Dixon-Coles razona "a mano" sobre goles, el segundo modelo
 (XGBoost, una técnica de machine learning muy usada en la práctica)
 aprende directamente a predecir quién gana a partir de las features de
 forma de la Fase 3 (racha, promedio de goles, puntos recientes), sin
-ningún supuesto estadístico de cómo se distribuyen los goles. Resultado
-en los partidos que nunca vio durante el entrenamiento: cumple la meta
-de precisión general que pedía el plan, con margen. Queda una nota
-honesta en el detalle técnico sobre una segunda métrica (el "Brier
-score") que depende de qué convención exacta se use para calcularla —
-se prefirió dejarlo señalado con el número real y la explicación, en
-vez de ajustar la fórmula después de ver el resultado solo para que
-"pasara" un umbral. Detalle completo en `docs/xgb_1x2_resultados.md`.
+ningún supuesto estadístico de cómo se distribuyen los goles. Y un
+cuarto paso igual de directo: el mismo enfoque pero para predecir si va
+a haber más o menos de cierta cantidad de goles, y si ambos equipos van
+a marcar.
+
+**El hallazgo más importante de esta fase, y hay que decirlo con
+franqueza**: al medir estos modelos contra algo mucho más simple que
+cualquiera de ellos —predecir siempre lo que pasó históricamente, sin
+ningún modelo— ninguno de los tres (ni el Poisson/Dixon-Coles, ni el
+XGBoost de 1X2, ni el de más/menos goles y ambos marcan) le gana con
+claridad y consistencia a esa comparación trivial. El código funciona
+bien de punta a punta (probado, verificado a mano), pero las features
+que se tienen hoy —sobre todo promedios de goles de los últimos 5
+partidos— no alcanzan todavía para predecir mejor que "lo de siempre".
+El candidato más directo para mejorar esto es cargar el xG (gol
+esperado) de Understat a la base de datos, algo que ya estaba
+identificado como pendiente desde la Fase 3 pero sin urgencia — ahora
+la tiene. Por esta razón, **no se sigue a la Fase 5 (la capa que
+decidiría apuestas con dinero real) todavía**: hacerlo sobre modelos
+sin ventaja demostrada sería irresponsable. Queda como decisión de
+Carlos cómo seguir. Detalle completo, sin maquillar el número, en
+`docs/xgb_1x2_resultados.md`, `docs/xgb_binary_resultados.md` y la
+corrección agregada en `docs/dixon_coles_resultados.md`.
 
 ## Dónde está el proyecto hoy (11 nov 2026)
 
-Fases 0 a 3 completas, fase 4 arrancada. La base de datos tiene, con
-datos reales ya cargados: 5 ligas, 10 temporadas, 110 equipos, miles de
-partidos con su marcador, más de 130.000 filas de cuotas históricas
-(los 3 mercados: 1x2, más/menos goles y hándicap asiático), la tabla de
-posiciones histórica, el dataset de features, y ya el primer paso de
-modelado (split temporal) listo.
+Fases 0 a 3 completas. Fase 4 con 4 de 5 tareas hechas (split temporal,
+los 3 modelos) — el pipeline funciona de punta a punta, pero ninguno
+de los 3 modelos muestra todavía una ventaja clara sobre predecir la
+tasa histórica (ver el hallazgo de arriba). La base de datos tiene,
+con datos reales ya cargados: 5 ligas, 10 temporadas, 110 equipos,
+miles de partidos con su marcador, más de 130.000 filas de cuotas
+históricas (los 3 mercados: 1x2, más/menos goles y hándicap asiático),
+la tabla de posiciones histórica, y el dataset de features.
 
 ## Lo que sigue
 
-Terminar **Fase 4** (los modelos predictivos propiamente dichos —
-estadístico y de machine learning), después **Fase 5** (la capa que
-decide cuánto apostar y cuándo, con gestión de riesgo), y **Fase 6**
-(que todo el proceso corra solo todos los días, sin intervención
-manual). Detalle de cada paso y el orden exacto: `PLAN_DE_TRABAJO.md`. Qué falta y de
-quién depende: `INFORME_PENDIENTES.md`.
+Antes de nada más: decidir si se carga el xG a la base de datos y se
+vuelve a medir, o si se sigue de todos modos sabiendo las salvedades
+(ver `INFORME_PENDIENTES.md`). Después de eso: terminar **Fase 4**
+(falta el backtesting histórico, en pausa por el mismo motivo), **Fase
+5** (la capa que decide cuánto apostar y cuándo, en pausa) y **Fase 6**
+(que todo el proceso corra solo todos los días). Detalle de cada paso
+y el orden exacto: `PLAN_DE_TRABAJO.md`.

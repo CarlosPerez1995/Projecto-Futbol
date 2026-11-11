@@ -20,33 +20,51 @@ cada uno construido sobre el anterior:
    exactas, sin overlap.
 2. ~~**Modelo Poisson/Dixon-Coles**~~ — **Hecho (11 nov)**:
    `src/futbol/models/poisson_dixon_coles.py`, un modelo por liga y
-   temporada. RPS < 0.25 en test en las 5 ligas (criterio de
-   aceptación del plan cumplido) — detalle completo y el ejemplo real
-   (los ratings coinciden con los 3 equipos que realmente descendieron
-   de la Premier League 2024-25) en `docs/dixon_coles_resultados.md`.
+   temporada. RPS < 0.25 en test en las 5 ligas (número exacto del
+   plan cumplido) — pero **corrección agregada el 11 nov** al comparar
+   contra una línea base trivial (predecir siempre la proporción
+   histórica de train): el modelo le gana claro en 2 de 5 ligas, es
+   indistinguible en 1, y queda ligeramente peor en 2. Detalle y el
+   ejemplo real (ratings que coinciden con los 3 descendidos reales de
+   la Premier League 2024-25) en `docs/dixon_coles_resultados.md`.
 3. ~~**Modelo de clasificación 1X2** (XGBoost)~~ — **Hecho (11 nov)**:
    `src/futbol/models/xgb_1x2.py`. LogLoss 1.090 en test, cumple el
-   criterio del plan (<1.1) con margen. El Brier (0.658) quedó
-   reportado con una nota honesta: depende de qué convención de la
-   métrica se use — ver `docs/xgb_1x2_resultados.md` para el detalle,
-   no se ajustó la fórmula para forzar que "pasara". Cada versión del
-   modelo se guarda con sus métricas y el hash del dataset con que se
-   entrenó (`models/xgb_1x2/<version>/model.pkl` + `metrics.json`).
-4. **Modelos de over/under y BTTS** — mismo patrón que el anterior,
-   target distinto.
-5. **Backtesting histórico** — simular, sobre partidos ya jugados que
-   el modelo nunca vio en entrenamiento, qué tan rentable habría sido
-   apostar siguiendo sus predicciones.
+   número exacto del plan (<1.1) — **corrección agregada el 11 nov**:
+   la línea base trivial da 1.078, el modelo queda ligeramente PEOR.
+   Ver `docs/xgb_1x2_resultados.md`. Cada versión del modelo se guarda
+   con sus métricas y el hash del dataset con que se entrenó
+   (`models/xgb_1x2/<version>/model.pkl` + `metrics.json`).
+4. ~~**Modelos de over/under y BTTS**~~ — **Hecho (11 nov)**, con un
+   hallazgo real importante: `src/futbol/models/xgb_binary.py`, mismo
+   patrón que 1X2. **Ningún AUC pasa de 0.55** (el plan pedía >0.6) —
+   los 3 modelos quedan peor que la línea base trivial en test.
+   Descartado que sea un bug de calibración (comparado isotónica vs.
+   sigmoide vs. sin calibrar: resultado casi idéntico en los tres
+   casos). Diagnóstico completo, y la corrección retroactiva de 4.2/4.3
+   de arriba, en `docs/xgb_binary_resultados.md`.
+5. **Backtesting histórico** — **en pausa**, no tiene sentido simular
+   rentabilidad de apuestas con modelos sin edge demostrado todavía
+   contra una línea base trivial (ver punto de decisión abajo).
 
-**Punto de decisión dentro de esta fase:** cuándo convenga, cargar el
-xG de Understat a la base de datos (pendiente de Fase 2/3, ver
-`INFORME_PENDIENTES.md`) puede mejorar estos modelos — no es
-obligatorio para arrancar, pero es la ventana natural para retomarlo
-si los primeros resultados sin xG no son suficientemente buenos.
+**Punto de decisión antes de seguir — ya no es "cuando convenga"
+como decía esta misma sección antes del 11 nov**: los 3 modelos
+entrenados hasta ahora (Dixon-Coles, XGBoost 1X2, XGBoost over/under y
+BTTS) no muestran una ventaja clara y consistente sobre simplemente
+conocer las tasas históricas. El candidato más directo para mejorar
+esto es cargar el xG de Understat a la base de datos (pendiente desde
+Fase 2/3, ver `INFORME_PENDIENTES.md`) — especialmente relevante para
+over/under y BTTS, donde el xG debería ser una señal mucho más directa
+que promedios de goles de los últimos 5 partidos. Recomendación: cargar
+xG y volver a medir antes de avanzar a Fase 5, o que Carlos decida
+seguir de todos modos sabiendo las salvedades. **Fase 5 queda en pausa
+hasta esta decisión** — construir una capa de apuestas reales sobre un
+modelo sin edge demostrado sería irresponsable.
 
 ## Fase 5 — Capa prescriptiva
 
-Depende de Fase 4 (al menos un modelo con probabilidades calibradas).
+**En pausa** (ver punto de decisión arriba). Depende de Fase 4
+completa Y de tener al menos un modelo con ventaja demostrada sobre la
+línea base trivial, no solo "con probabilidades calibradas".
 
 1. **Valor esperado y Kelly fraccionado** — las fórmulas que deciden
    si una apuesta vale la pena (`EV`) y cuánto arriesgar si sí (`Kelly`,
@@ -77,10 +95,10 @@ Depende de Fase 5.
 
 ## Trabajo que se puede intercalar en cualquier momento, sin bloquear nada
 
-- Cargar xG de Understat a la BD (ver Fase 4, punto de decisión).
 - Limpiar la carpeta `~/Escritorio/proyectos` redundante.
 
-Ninguno de estos dos está bloqueando el avance de Fase 4 en adelante —
-se insertan donde convenga según prioridad de Carlos. (Los mercados de
-cuotas over/under y hándicap asiático que estaban en esta lista ya se
-implementaron el 10 nov — ver `INFORME_PENDIENTES.md`.)
+(Los mercados de cuotas over/under y hándicap asiático que estaban en
+esta lista ya se implementaron el 10 nov — ver `INFORME_PENDIENTES.md`.
+Cargar xG de Understat YA NO es "cuando convenga" — ver el punto de
+decisión de Fase 4 arriba, pasó a ser el paso recomendado antes de
+seguir.)
