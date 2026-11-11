@@ -24,11 +24,14 @@ cada uno construido sobre el anterior:
    aceptación del plan cumplido) — detalle completo y el ejemplo real
    (los ratings coinciden con los 3 equipos que realmente descendieron
    de la Premier League 2024-25) en `docs/dixon_coles_resultados.md`.
-3. **Modelo de clasificación 1X2** (XGBoost) — quién gana, pierde o
-   empata, usando las features de forma de la Fase 3 como entrada.
-   Cada versión del modelo se guarda con sus métricas y la referencia
-   exacta a qué versión del dataset se entrenó (por eso `dataset.py`
-   ya deja un hash en `features_spec.md`).
+3. ~~**Modelo de clasificación 1X2** (XGBoost)~~ — **Hecho (11 nov)**:
+   `src/futbol/models/xgb_1x2.py`. LogLoss 1.090 en test, cumple el
+   criterio del plan (<1.1) con margen. El Brier (0.658) quedó
+   reportado con una nota honesta: depende de qué convención de la
+   métrica se use — ver `docs/xgb_1x2_resultados.md` para el detalle,
+   no se ajustó la fórmula para forzar que "pasara". Cada versión del
+   modelo se guarda con sus métricas y el hash del dataset con que se
+   entrenó (`models/xgb_1x2/<version>/model.pkl` + `metrics.json`).
 4. **Modelos de over/under y BTTS** — mismo patrón que el anterior,
    target distinto.
 5. **Backtesting histórico** — simular, sobre partidos ya jugados que

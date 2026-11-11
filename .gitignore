@@ -78,6 +78,14 @@ data/
 !Planificacion/*.xlsx
 !Planificacion/*.png
 
+# Modelos entrenados (tarea 4.3, Fase 4) — binarios regenerables, no se
+# versionan; metadata (metrics.json) tampoco, se puede volver a generar
+# reentrenando. Igual criterio que data/. Ancla con "/" al inicio: sin
+# eso, "models/" ignoraba también src/futbol/models/ (el PAQUETE de
+# código con split.py/poisson_dixon_coles.py/xgb_1x2.py) — bug real
+# encontrado antes de commitear, no solo una carpeta de salida.
+/models/
+
 # Archivos de credenciales / secretos
 *.key
 *.pem

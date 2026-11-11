@@ -25,7 +25,10 @@ instalados y congelados en `requirements.txt`; 4.1 (split temporal,
 `src/futbol/models/split.py`) y 4.2 (Poisson/Dixon-Coles,
 `src/futbol/models/poisson_dixon_coles.py` — un modelo por liga/
 temporada, RPS < 0.25 en test en las 5 ligas, ver
-`docs/dixon_coles_resultados.md`) hechas — 4.3-4.5 pendientes.
+`docs/dixon_coles_resultados.md`) y 4.3 (clasificación 1X2 con XGBoost,
+`src/futbol/models/xgb_1x2.py` — LogLoss 1.090 < 1.1 en test, cumple;
+Brier reportado con nota honesta de ambigüedad de convención, ver
+`docs/xgb_1x2_resultados.md`) hechas — 4.4-4.5 pendientes.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),
@@ -219,6 +222,24 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
     completos y el ejemplo real (ratings de la Premier League 2024-25
     coinciden con los 3 descendidos reales) en
     `docs/dixon_coles_resultados.md`.
+  - `src/futbol/models/xgb_1x2.py` — clasificación 1X2 con XGBoost
+    (tarea 4.3, Fase 4): `fit_xgb_1x2` (train + `GridSearchCV` con
+    `TimeSeriesSplit`, nunca k-fold al azar) → `calibrate_xgb_1x2`
+    (val, regresión isotónica vía `CalibratedClassifierCV(
+    FrozenEstimator(...))` — API vigente en scikit-learn 1.9.1, el
+    `cv="prefit"` viejo ya no existe, verificado contra el código
+    instalado antes de usarlo) → `evaluate_xgb_1x2` (test, LogLoss +
+    Brier) → `save_model` (versionado por fecha,
+    `models/xgb_1x2/<version>/model.pkl` + `metrics.json` con feature
+    importances y el hash del dataset de entrenamiento — `models/` no
+    se versiona, mismo criterio que `data/`, ver `.gitignore`).
+    `result_1x2` se codifica con `LabelEncoder` (XGBoost 3.4.1 rechaza
+    texto directo, verificado) y `current_streak_result_*` (texto) se
+    codifica a escala ordinal simple antes de entrenar — el resto de
+    `predictor_columns()` ya es numérico y XGBoost acepta sus `NaN`
+    nativamente, sin imputar. Resultados completos, con una nota
+    honesta sobre una posible ambigüedad de convención en la métrica
+    Brier del plan original, en `docs/xgb_1x2_resultados.md`.
 - `config/` — configuración versionada del proyecto:
   - `config/config.yaml` — ligas/temporadas por defecto, `data_dir`,
     `cache_dir`, `log_level`.

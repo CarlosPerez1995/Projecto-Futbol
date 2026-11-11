@@ -261,6 +261,20 @@ entrenamiento: por debajo de 0.25 en las 5 ligas, que era la meta fijada
 desde el plan original. Detalle completo en
 `docs/dixon_coles_resultados.md`.
 
+**Tercer paso: un segundo modelo, con un enfoque distinto.** Mientras el
+Poisson/Dixon-Coles razona "a mano" sobre goles, el segundo modelo
+(XGBoost, una técnica de machine learning muy usada en la práctica)
+aprende directamente a predecir quién gana a partir de las features de
+forma de la Fase 3 (racha, promedio de goles, puntos recientes), sin
+ningún supuesto estadístico de cómo se distribuyen los goles. Resultado
+en los partidos que nunca vio durante el entrenamiento: cumple la meta
+de precisión general que pedía el plan, con margen. Queda una nota
+honesta en el detalle técnico sobre una segunda métrica (el "Brier
+score") que depende de qué convención exacta se use para calcularla —
+se prefirió dejarlo señalado con el número real y la explicación, en
+vez de ajustar la fórmula después de ver el resultado solo para que
+"pasara" un umbral. Detalle completo en `docs/xgb_1x2_resultados.md`.
+
 ## Dónde está el proyecto hoy (11 nov 2026)
 
 Fases 0 a 3 completas, fase 4 arrancada. La base de datos tiene, con
