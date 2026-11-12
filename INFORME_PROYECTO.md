@@ -19,8 +19,8 @@ organizarlos en una base de datos, después construir features y
 modelos predictivos, después la capa de decisión, y al final dejarlo
 corriendo solo todos los días.
 
-Hoy (26 oct 2026) las dos primeras fases están completas y se está
-arrancando la tercera.
+Hoy (11 nov 2026) las fases 0 a 4 están completas y la Fase 5 arrancó
+y quedó pausada por un hallazgo real — ver más abajo.
 
 ## Fase 0 — Poner la casa en orden (3-6 ago 2026)
 
@@ -381,12 +381,13 @@ que cobra la casa de apuestas con cada apuesta.
 Por este motivo, **no se construyó el resto de la Fase 5** (las
 recomendaciones diarias automáticas, el registro de apuestas) sobre
 esta base — habría sido poner en producción, a mayor escala, una
-estrategia que el propio backtest ya mostró que pierde dinero. Fase 5
-queda pausada en este punto, con un diagnóstico claro en
-`docs/backtest_resultados.md`, a la espera de que Carlos decida cómo
-seguir: abandonar este enfoque, buscar una señal realmente
-independiente del mercado, o usar los modelos solo como referencia
-informativa sin apostar de forma automática.
+estrategia que el propio backtest ya mostró que pierde dinero.
+**Carlos decidió pausar la Fase 5 por ahora, mientras se busca una
+estrategia con una señal genuinamente independiente del mercado** —
+ni la forma histórica (Fase 3) ni el xG (primera ronda de hoy)
+alcanzaron por sí solos, y las cuotas de mercado, aunque mejoraron las
+métricas predictivas, no sirven para apostar contra ese mismo mercado.
+Diagnóstico completo en `docs/backtest_resultados.md`.
 
 ## Dónde está el proyecto hoy (11 nov 2026)
 
@@ -408,11 +409,9 @@ dataset de features.
 
 ## Lo que sigue
 
-Antes de nada más: con el backtest real mostrando pérdidas severas,
-Carlos tiene que decidir cómo seguir con Fase 5 (ver
-`INFORME_PENDIENTES.md`) — la pregunta ya no es "qué tan rentable es"
-sino "vale la pena seguir por este camino o hace falta una señal
-distinta". Después de eso: **Fase 5** (en pausa, bloqueada por este
-hallazgo) y **Fase 6** (que todo el proceso corra solo todos los
-días, depende de que Fase 5 termine de resolverse). Detalle de cada
-paso y el orden exacto: `PLAN_DE_TRABAJO.md`.
+**Fase 5 queda en pausa** (decisión de Carlos, 11 nov) hasta encontrar
+una señal genuinamente independiente del mercado — no se construyen
+recomendaciones diarias ni registro de apuestas mientras tanto. **Fase
+6** (que todo el proceso corra solo todos los días) depende de que
+Fase 5 se resuelva. Detalle de cada paso y el orden exacto:
+`PLAN_DE_TRABAJO.md`.

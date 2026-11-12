@@ -62,10 +62,10 @@ bug (cuando el modelo discrepa de la cuota de mercado, el mercado
 resulta más acertado, no al revés). El edge de Fase 4 (vs. línea base
 trivial) no es el mismo tipo de edge que hace falta para apostar
 rentablemente contra el mercado que en gran parte generó ese edge.
-Detalle completo en `docs/backtest_resultados.md`. **Fase 5 queda
-bloqueada en este punto** — no se construyeron recomendaciones
-diarias ni registro de apuestas sobre una estrategia ya descartada por
-este mismo backtesting.
+Detalle completo en `docs/backtest_resultados.md`. **Carlos decidió
+pausar Fase 5** mientras se busca una señal independiente del mercado
+— no se construyeron recomendaciones diarias ni registro de apuestas
+sobre una estrategia ya descartada por este mismo backtesting.
 4 documentos no técnicos para Carlos en la raíz del repo, mantenerlos al
 día en cada fase cerrada, no solo este archivo: `INFORME_PROYECTO.md`
 (avance), `INFORME_PENDIENTES.md` (qué falta y de quién depende),

@@ -1,6 +1,6 @@
 # Arquitectura del sistema — Fútbol
 
-*Última actualización: 4 nov 2026. Nivel intermedio: más técnico que
+*Última actualización: 11 nov 2026. Nivel intermedio: más técnico que
 `INFORME_PROYECTO.md`, menos detallado que `AGENTS.md` (ahí está la
 referencia exacta función por función). Pensado para entender cómo
 está armado el sistema sin tener que leer el código.*
@@ -36,7 +36,21 @@ flowchart LR
 
     DATASET[("model_dataset.csv\n+ features_spec.md")]
 
-    FUTURO["Fase 4-6:\nmodelos → recomendaciones\n→ operación diaria\n(sin empezar)"]
+    subgraph ModelosFase["Modelos (Fase 4, completa)"]
+        SPLIT[split.py]
+        DC[poisson_dixon_coles.py]
+        X12[xgb_1x2.py]
+        XB[xgb_binary.py]
+    end
+
+    MODELS[("models/&lt;tipo&gt;/&lt;version&gt;/\nmodel.pkl + metrics.json")]
+
+    subgraph FasePrescriptiva["Capa prescriptiva (Fase 5, PARCIAL — pausada)"]
+        EVK[ev_kelly.py]
+        BT[backtest.py]
+    end
+
+    FUTURO["Fase 5 (recomendaciones diarias,\nregistro de apuestas) y Fase 6\n(operación diaria):\nPAUSADAS — ver hallazgo del backtest"]
 
     SO --> CLI
     MH --> CLI
@@ -48,7 +62,16 @@ flowchart LR
     DB --> FM --> FD
     DB --> FT --> FD
     FD --> DATASET
-    DATASET -.-> FUTURO
+    DATASET --> SPLIT
+    SPLIT --> DC
+    SPLIT --> X12
+    SPLIT --> XB
+    DC --> MODELS
+    X12 --> MODELS
+    XB --> MODELS
+    MODELS --> BT
+    EVK --> BT
+    BT -.-> FUTURO
 ```
 
 ## Las 4 fuentes de datos y qué aporta cada una
@@ -58,7 +81,7 @@ flowchart LR
 | **Sofascore** | Calendario, resultados, tabla de posiciones | Es la fuente "ancla": todas las ligas/temporadas se definen en términos de sus códigos (`ENG-Premier League`, `2425`). |
 | **MatchHistory** (football-data.co.uk) | Resultados históricos y cuotas de más de 20 casas de apuestas | Sin ningún id propio — solo nombres de equipo (y abreviados: "Wolves", "Man Utd"). Hora de los partidos en hora local de Reino Unido, no UTC (ver más abajo). |
 | **ESPN** | Calendario, de respaldo/cruce | No trae marcador en la integración actual — solo sirve para confirmar identidad de partidos, no para cargar resultados. |
-| **Understat** | Estadísticas avanzadas (xG) | Única fuente que trae un id propio de equipo junto al nombre. Su xG todavía no se carga a la BD (ver `INFORME_PENDIENTES.md`). |
+| **Understat** | Estadísticas avanzadas (xG) | Única fuente que trae un id propio de equipo junto al nombre. Su xG sí se carga a la BD desde el 11 nov (`matches.home_xg`/`away_xg`, ver abajo). |
 
 Ninguna de las 4 comparte un identificador común de equipo o de
 partido entre sí — ese fue el primer problema de diseño real de la
@@ -78,7 +101,7 @@ erDiagram
     MATCHES ||--o{ ODDS : "tiene (histórico)"
 ```
 
-Ocho tablas, en `db/schema_v3.sql` (versión vigente — `v1`/`v2` quedan
+Nueve tablas, en `db/schema_v4.sql` (versión vigente — `v1`-`v3` quedan
 como historial, nunca se editan):
 
 - **`leagues`/`seasons`** — catálogos simples. Las 4 fuentes SÍ
@@ -87,7 +110,11 @@ como historial, nunca se editan):
   mapeo.
 - **`teams`/`matches`** — catálogos **canónicos**, con su propio id
   interno (no tomado de ninguna fuente), porque ninguna fuente tiene
-  un id o nombre que las otras 3 reconozcan.
+  un id o nombre que las otras 3 reconozcan. `matches.home_xg`/
+  `away_xg` (agregado en v4, 11 nov) son la excepción al "historial
+  completo" de abajo: se sobrescriben igual que el marcador, porque el
+  xG de un partido ya jugado es un hecho fijo, no algo que cambie con
+  el tiempo como una cuota.
 - **`team_source_ids`/`match_source_ids`** — tablas de mapeo: por cada
   fuente, qué nombre/id usa esa fuente para referirse a un equipo o
   partido canónico. Resuelven el problema de "Wolverhampton" /
@@ -98,7 +125,12 @@ como historial, nunca se editan):
   extracción, no de la carga a la BD). Decisión de Carlos, pensada
   para que un modelo futuro pueda usar "cómo venía cambiando la cuota"
   o "en qué posición estaba el equipo antes de este partido", no solo
-  el dato más reciente.
+  el dato más reciente. `odds` cubre 3 mercados (`market`: `1x2`,
+  `over_under_2.5`, `asian_handicap`) y distingue cuota pre-cierre de
+  cuota de cierre (`is_closing`) — la de cierre es la que se usa como
+  feature de los modelos (Fase 4) y para el backtest (Fase 5), porque
+  es la última disponible antes de que el mercado deje de aceptar
+  apuestas.
 - **`pipeline_runs`** — pensada para la Fase 6 (que el proceso corra
   solo todos los días); todavía no se usa, pero ya está en el esquema
   para no tener que migrarlo después.
@@ -114,11 +146,14 @@ como historial, nunca se editan):
    sobrescribe el marcador con el valor más reciente (`upsert_match_result`
    — a diferencia de `odds`/`fixtures`, el resultado de un partido no
    tiene historial que valga la pena guardar).
-3. `load_odds_1x2` — cuotas del mercado 1x2, una fila nueva por
-   corrida de extracción (histórico).
+3. `load_odds_1x2` / `load_odds_extra_markets` — cuotas de los 3
+   mercados (1x2, over/under 2.5, hándicap asiático), una fila nueva
+   por corrida de extracción (histórico).
 4. `load_fixtures` — tabla de posiciones, mismo patrón de histórico
    que las cuotas. La posición se calcula por el orden de fila que ya
    trae Sofascore, no se recalcula con un criterio propio.
+5. `load_xg` — xG real de Understat a `matches.home_xg`/`away_xg`
+   (agregado 11 nov). Upsert real, no histórico (ver arriba).
 
 Cada paso tiene su propio módulo en `src/futbol/db/`, y
 `validate_data.py` corre después para confirmar que no hay
@@ -138,10 +173,57 @@ anterior:
    **predictoras**. El cuidado central acá es no mirar el resultado
    del propio partido al calcular su "antes" — verificado con un
    escenario de prueba calculado a mano, no solo confiado al código.
-3. **`dataset.py`** — une las dos anteriores y las separa
-   explícitamente en `predictor_columns()` vs. `TARGET_COLUMNS`, con
-   un test que rompe si alguna vez esas dos listas se superponen por
-   error.
+3. **`dataset.py`** — une las dos anteriores (más `odds.py`, ver
+   abajo) y las separa explícitamente en `predictor_columns()` vs.
+   `TARGET_COLUMNS`, con un test que rompe si alguna vez esas dos
+   listas se superponen por error.
+4. **`odds.py`** (agregado 11 nov) — probabilidad implícita de la
+   cuota de cierre promedio (mercados 1x2 y over/under 2.5), sin el
+   margen de la casa ("devigging"). No es fuga de datos: la cuota de
+   cierre se fija antes del partido.
+
+## Capa de modelos (Fase 4, completa)
+
+Tres enfoques distintos sobre el mismo `model_dataset.csv`,
+`src/futbol/models/`:
+
+- **`split.py`** — divide el dataset 70/15/15 por fecha (nunca al
+  azar) en `train`/`val`/`test`, con overlap de fechas garantizado en
+  cero entre splits.
+- **`poisson_dixon_coles.py`** — un modelo estadístico (MLE) por
+  `(liga, temporada)`, ajustado directo sobre los goles — no consume
+  `predictor_columns()` ni ninguna feature de equipo o de mercado.
+- **`xgb_1x2.py`/`xgb_binary.py`** — XGBoost sobre
+  `predictor_columns()` (forma de equipo + xG + cuotas de mercado),
+  calibrado con el split `val` (sigmoide/Platt — la isotónica del plan
+  original resultó inestable con este tamaño de muestra, ver
+  `docs/xgb_1x2_resultados.md`) y evaluado en `test`.
+
+**Resultado real, verificado contra una línea base trivial en los 3
+enfoques** (predecir siempre la tasa histórica): 1X2, "más de 1.5
+goles" y "más de 2.5 goles" tienen ventaja real; "ambos equipos
+marcan" no. Detalle en `docs/xgb_1x2_resultados.md`,
+`docs/xgb_binary_resultados.md`, `docs/dixon_coles_resultados.md`.
+
+## Capa prescriptiva (Fase 5, PARCIAL — pausada por un hallazgo real)
+
+`src/futbol/betting/`:
+
+- **`ev_kelly.py`** — valor esperado (`prob_modelo * cuota - 1`) y
+  Kelly fraccionado (mitad de Kelly, tope 5% del banco por apuesta).
+- **`backtest.py`** — simula apostar según esas fórmulas contra cuotas
+  REALES de cierre sobre el split `test`.
+
+**Por qué queda en "parcial"**: el backtest mostró que la estrategia
+pierde dinero de forma severa (-85% del banco simulado en 1X2, -49%
+en over/under 2.5) — el edge medido contra la línea base trivial (capa
+de modelos) no es el mismo tipo de edge que hace falta para apostar
+rentablemente contra el mercado que en parte lo generó. Detalle
+completo, con la verificación de que no es un bug, en
+`docs/backtest_resultados.md`. **No se construyó el resto de Fase 5**
+(recomendaciones diarias, registro de apuestas) sobre esta base ya
+demostrada perdedora — decisión de Carlos: pausar mientras se busca
+una señal genuinamente independiente del mercado.
 
 ## Decisiones de diseño que vale la pena recordar
 
@@ -157,6 +239,17 @@ anterior:
 
 ## Limitaciones conocidas
 
-Ver `INFORME_PENDIENTES.md` para el detalle completo (xG sin cargar,
-mercados de cuotas sin implementar, y por qué ninguno de los dos
-bloquea el resto del trabajo).
+Ver `INFORME_PENDIENTES.md` para el detalle completo. Las más
+importantes hoy:
+
+- **No hay cuota de mercado de over/under 1.5** en este dataset (solo
+  1x2 y over/under 2.5) — el modelo `xgb_over_1_5` tiene buena métrica
+  pero no se puede backtestear ni operar sin esa cuota real.
+- **BTTS (ambos equipos marcan) no tiene ventaja real** sobre la línea
+  base trivial, ni con xG ni con las cuotas de mercado disponibles.
+- **La Fase 5 (capa prescriptiva) está pausada**: el enfoque "apostar
+  cuando el modelo ve valor esperado positivo" se backtesteó contra
+  cuotas reales y pierde dinero — no es un problema de código, es que
+  el edge de los modelos (medido contra una línea base trivial) no es
+  el mismo tipo de edge que hace falta para apostar rentablemente
+  contra el mercado.

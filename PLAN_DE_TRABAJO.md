@@ -1,8 +1,8 @@
 # Plan de trabajo — Fútbol
 
 *Última actualización: 11 nov 2026. Qué sigue y en qué orden, a partir
-de donde está hoy el proyecto (fases 0-3 completas, fase 4 arrancada,
-ver `INFORME_PROYECTO.md`). Basado en el plan arquitectónico original
+de donde está hoy el proyecto (fases 0-4 completas, fase 5 pausada por
+un hallazgo real, ver `INFORME_PROYECTO.md`). Basado en el plan arquitectónico original
 (`~/Escritorio/AuditoriaFutbol/Planes arquitectonicos/`, fuera de este
 repo) ajustado con lo que realmente se construyó.*
 
@@ -86,16 +86,18 @@ por ninguna ronda de Fase 4 (no consume estas features).
 
 ## Fase 5 — Capa prescriptiva
 
-**Bloqueada por un hallazgo real, no por falta de decisión**: al
-construir el punto 1 (EV + Kelly) y backtestearlo contra cuotas reales
-(`src/futbol/betting/`), la estrategia "apostar con EV positivo" pierde
-85% del banco simulado en 1X2 y 49% en over/under 2.5 — ver
-`docs/backtest_resultados.md` para el detalle completo, incluida la
-verificación de que no es un bug de código. **No se construyeron los
-puntos 2 y 3 sobre esta base ya demostrada perdedora** — hacerlo sería
-automatizar, a mayor escala, una estrategia que el propio backtesting
-de este mismo punto 1 descartó. Queda pendiente de que Carlos decida
-cómo seguir (ver `INFORME_PENDIENTES.md`).
+**En pausa (decisión de Carlos, 11 nov)**: al construir el punto 1 (EV
++ Kelly) y backtestearlo contra cuotas reales (`src/futbol/betting/`),
+la estrategia "apostar con EV positivo" pierde 85% del banco simulado
+en 1X2 y 49% en over/under 2.5 — ver `docs/backtest_resultados.md`
+para el detalle completo, incluida la verificación de que no es un
+bug de código. **No se construyeron los puntos 2 y 3 sobre esta base
+ya demostrada perdedora** — hacerlo sería automatizar, a mayor escala,
+una estrategia que el propio backtesting de este mismo punto 1
+descartó. Carlos decidió pausar la fase mientras se busca una
+estrategia con una señal genuinamente independiente del mercado (ver
+`INFORME_PENDIENTES.md`) — no hay todavía un candidato concreto
+elegido para esa búsqueda.
 
 1. ~~**Valor esperado y Kelly fraccionado**~~ — **Hecho (11 nov)**:
    `src/futbol/betting/ev_kelly.py` (fórmulas, con la advertencia
@@ -121,7 +123,7 @@ Depende de Fase 5.
    en otro frente del hub, Punky Soluciones, con buenos resultados),
    para que corra solo sin depender de que alguien lo arranque a mano.
 3. **Cobertura de tests ≥40%** — cierre de cobertura, no arranque
-   desde cero: cada fase ya viene con sus propios tests (91 hoy), así
+   desde cero: cada fase ya viene con sus propios tests (150 hoy), así
    que el trabajo real acá es medir qué falta, no escribir todo de
    nuevo.
 4. **Documentación final** — `README.md` con diagrama de flujo
