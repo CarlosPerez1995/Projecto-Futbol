@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [desarrollo, main]
+  push:
+    branches: [desarrollo, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Instalar el paquete futbol (modo editable)
+        run: pip install -e .
+
+      - name: Correr tests
+        run: pytest tests/
