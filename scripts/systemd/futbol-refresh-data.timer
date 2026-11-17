@@ -1,0 +1,11 @@
+[Unit]
+Description=Futbol - correr el refresco de datos una vez por semana
+
+[Timer]
+# Todos los lunes a las 06:00 hora local
+OnCalendar=Mon *-*-* 06:00:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

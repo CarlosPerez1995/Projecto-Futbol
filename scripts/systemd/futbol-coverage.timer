@@ -1,0 +1,11 @@
+[Unit]
+Description=Futbol - correr la medicion de cobertura una vez por mes
+
+[Timer]
+# El primer dia de cada mes a las 07:00 hora local
+OnCalendar=*-*-01 07:00:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

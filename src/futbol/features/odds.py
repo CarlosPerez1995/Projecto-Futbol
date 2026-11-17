@@ -21,6 +21,20 @@ apuestas (overround). Se convierten con la técnica estándar de
 "devigging": probabilidad implícita cruda = 1/cuota para cada
 resultado, normalizada para que la suma dé 1 (reparte el margen
 proporcionalmente, no lo descarta).
+
+**Bug real encontrado el 17 nov, al correr el refresco de datos por
+segunda vez** (``scripts/refresh_data.py``): ``odds`` guarda historial
+completo (``captured_at`` en la ``UNIQUE``, ver ``db/schema_v4.sql``)
+— un partido ya jugado tiene cuota de cierre fija, pero volver a
+extraer la misma fuente en una corrida posterior crea una fila NUEVA
+con el mismo valor y un ``captured_at`` distinto. La consulta original
+no filtraba por ``captured_at`` y asumía una sola fila por
+``(match_id, bookmaker, market, is_closing)`` — cierto la primera vez
+que se cargó (11 nov), falso desde la segunda extracción en adelante.
+``build_model_dataset`` lo detectó solo (el assert de "el merge no
+debe cambiar la cantidad de filas" existe justo para esto). Corregido
+quedándose con la captura más reciente (``MAX(captured_at)``) por
+partido y mercado.
 """
 from __future__ import annotations
 
@@ -36,15 +50,25 @@ ODDS_FEATURE_COLUMNS = [
 ]
 
 _QUERY_ODDS_1X2_CIERRE_AVG = """
-SELECT match_id, home_value AS odds_home, draw_value AS odds_draw, away_value AS odds_away
-FROM odds
-WHERE market = '1x2' AND is_closing = 1 AND bookmaker = 'avg'
+SELECT o.match_id, o.home_value AS odds_home, o.draw_value AS odds_draw, o.away_value AS odds_away
+FROM odds o
+WHERE o.market = '1x2' AND o.is_closing = 1 AND o.bookmaker = 'avg'
+  AND o.captured_at = (
+      SELECT MAX(o2.captured_at) FROM odds o2
+      WHERE o2.match_id = o.match_id AND o2.market = '1x2'
+        AND o2.is_closing = 1 AND o2.bookmaker = 'avg'
+  )
 """
 
 _QUERY_ODDS_OU25_CIERRE_AVG = """
-SELECT match_id, home_value AS odds_over, away_value AS odds_under
-FROM odds
-WHERE market = 'over_under_2.5' AND is_closing = 1 AND bookmaker = 'avg'
+SELECT o.match_id, o.home_value AS odds_over, o.away_value AS odds_under
+FROM odds o
+WHERE o.market = 'over_under_2.5' AND o.is_closing = 1 AND o.bookmaker = 'avg'
+  AND o.captured_at = (
+      SELECT MAX(o2.captured_at) FROM odds o2
+      WHERE o2.match_id = o.match_id AND o2.market = 'over_under_2.5'
+        AND o2.is_closing = 1 AND o2.bookmaker = 'avg'
+  )
 """
 
 

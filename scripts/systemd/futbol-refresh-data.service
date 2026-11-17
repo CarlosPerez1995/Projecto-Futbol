@@ -1,0 +1,7 @@
+[Unit]
+Description=Futbol - refresco semanal de datos (extraccion + carga + validacion + dataset)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/carlosperez/Escritorio/proyectos/futbol/Projecto-Futbol
+ExecStart=/home/carlosperez/Escritorio/proyectos/futbol/Projecto-Futbol/.venv/bin/python3 /home/carlosperez/Escritorio/proyectos/futbol/Projecto-Futbol/scripts/refresh_data.py

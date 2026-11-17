@@ -407,8 +407,12 @@ Referencia detallada: `/home/carlosperez/Escritorio/AuditoriaFutbol/Planes de Ro
   nunca editando v1-v4.
 - `.venv/` — entorno virtual (no versionar en git)
 - `requirements.txt` — dependencias del proyecto
-- Scripts de procesamiento de datos — por crear
-- Esquema de base de datos — por definir
+- `scripts/refresh_data.py` / `scripts/measure_coverage.py` (17 nov) —
+  tareas programadas, ver `scripts/systemd/README.md`: secuencias
+  deterministas (extracción+carga+validación+dataset; `pytest --cov`),
+  corridas por `systemd --user timer` (semanal / mensual), sin usar
+  OpenCode — reservado para seguimiento con criterio (ej. escribir
+  tests puntuales si la cobertura queda baja en un módulo).
 
 ## OpenCode como operativo (activado 10 nov 2026)
 

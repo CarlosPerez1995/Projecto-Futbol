@@ -39,11 +39,14 @@ def _match_id(conn) -> int:
     return conn.execute("SELECT match_id FROM matches").fetchone()[0]
 
 
-def _insert_odds(conn, match_id, bookmaker, market, is_closing, home_value, draw_value, away_value):
+def _insert_odds(
+    conn, match_id, bookmaker, market, is_closing, home_value, draw_value, away_value,
+    captured_at="2024-08-15 00:00:00",
+):
     conn.execute(
         "INSERT INTO odds (match_id, bookmaker, market, is_closing, home_value, draw_value, "
-        "away_value, captured_at) VALUES (?, ?, ?, ?, ?, ?, ?, '2024-08-15 00:00:00')",
-        (match_id, bookmaker, market, is_closing, home_value, draw_value, away_value),
+        "away_value, captured_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (match_id, bookmaker, market, is_closing, home_value, draw_value, away_value, captured_at),
     )
     conn.commit()
 
@@ -92,6 +95,23 @@ def test_ignora_cuotas_pre_cierre_y_de_otra_casa(conn):
 
     df = compute_odds_features(conn)
 
+    fila = df[df["match_id"] == match_id].iloc[0]
+    assert fila["odds_implied_prob_home"] == pytest.approx((1 / 2.00) / 1.0833333, rel=1e-4)
+
+
+def test_recapturar_la_misma_cuota_de_cierre_no_duplica_la_fila(conn):
+    """Bug real encontrado el 17 nov al re-extraer datos ya cargados:
+    ``odds`` guarda historial completo, así que un partido ya jugado
+    puede tener la MISMA cuota de cierre capturada dos veces (misma
+    corrida de scraping, dos fechas de extracción distintas). Debe
+    quedarse con una sola fila (la más reciente), no con las dos."""
+    match_id = _match_id(conn)
+    _insert_odds(conn, match_id, "avg", "1x2", 1, 2.00, 3.00, 4.00, captured_at="2026-08-08 00:00:00")
+    _insert_odds(conn, match_id, "avg", "1x2", 1, 2.00, 3.00, 4.00, captured_at="2026-11-17 00:00:00")
+
+    df = compute_odds_features(conn)
+
+    assert len(df[df["match_id"] == match_id]) == 1
     fila = df[df["match_id"] == match_id].iloc[0]
     assert fila["odds_implied_prob_home"] == pytest.approx((1 / 2.00) / 1.0833333, rel=1e-4)
 

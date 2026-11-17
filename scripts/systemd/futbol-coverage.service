@@ -1,0 +1,7 @@
+[Unit]
+Description=Futbol - medicion mensual de cobertura de tests
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/carlosperez/Escritorio/proyectos/futbol/Projecto-Futbol
+ExecStart=/home/carlosperez/Escritorio/proyectos/futbol/Projecto-Futbol/.venv/bin/python3 /home/carlosperez/Escritorio/proyectos/futbol/Projecto-Futbol/scripts/measure_coverage.py
